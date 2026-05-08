@@ -1,0 +1,26 @@
+# secrets
+.env
+
+# local Claude Code settings
+.claude/
+
+# python venv & caches
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# SDK-managed dirs
+environment_files/
+recordings/
+logs.log
+
+# vendored read-only reference
+vendor/
+
+# our experiment outputs
+runs/
+
+# training checkpoints and processed data (large)
+checkpoints/
+data/processed/

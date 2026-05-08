@@ -1,0 +1,10 @@
+arc-agi>=0.9.8
+arcengine>=0.9.3   # GameAction / GameState / FrameDataRaw — separate package, requires Python >=3.12
+python-dotenv
+numpy
+Pillow
+requests
+anthropic
+openai
+gymnasium
+pytest
