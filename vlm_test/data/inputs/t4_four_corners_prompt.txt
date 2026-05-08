@@ -1,0 +1,4 @@
+State: NOT_FINISHED | Level: 1/3
+0=black 1=blue 2=red 3=green 4=yellow 5=gray 6=magenta 7=orange 8=lightblue 9=maroon
+Available: ACTION1 ACTION2 ACTION3 ACTION4 ACTION5
+How many non-black objects do you see? Then: ACTION: <name>

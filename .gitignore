@@ -24,3 +24,7 @@ runs/
 # training checkpoints and processed data (large)
 checkpoints/
 data/processed/
+
+# vlm_test large files (PNG images and LoRA weights)
+vlm_test/data/train/images/
+vlm_test/outputs/checkpoint/
