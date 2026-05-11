@@ -1,6 +1,6 @@
 # RESEARCH — 文献、已尝试方案与缺陷
 
-最近一次更新:2026-04-27(跑通 agent_starter.py 后 §4 关闭 6 个开放问题、新增"SDK 已知坑"段;新增 4 个待验证问题)
+最近一次更新:2026-05-08(vlm_test 完成:新增 §2 方案 #5 VLM 烟雾测试结果;新增 §3 C9 提示格式缺陷)
 
 **核心原则:失败比成功更要写下来。** 这是避免下次重蹈覆辙的唯一方式。
 
@@ -114,6 +114,25 @@
   - 假设驳斥(BC-only RHAE < 0.05) → 检查 vision encoder 是否在纯颜色网格上欠拟合;考虑冻结 vision encoder 只 fine-tune text backbone;或升至 7B 变体
   - 不确定 → 消融:仅 text-only Qwen2.5-3B vs image+text Qwen2.5-VL-3B,量化视觉输入贡献
 
+### 5. Qwen2.5-VL-3B-Instruct 烟雾测试(2026-05-08,**已完成**)
+
+- **背景**:在方案 #3 全面开工前,先用 vlm_test 子项目验证"VLM pipeline 能跑通"。
+- **执行内容**:
+  1. `collect_data.py`:SDK 录制 60 条 silver-label 步骤(ls20, 2 ep × 30 steps),保存 PNG + JSONL
+  2. `test_vlm.py`:5 项能力测试(格式 / 颜色 / 导航 / 角落 / 一致性),见 Exp #4
+  3. `tiny_train.py`:60 条数据上 1 epoch QLoRA 微调,验证 pipeline 不 OOM,见 Exp #5
+- **关键发现**:
+  - **格式合规性**:纯代码动作列表(`ACTION1 ACTION2…`)格式完全可靠;带括号方向标签(`ACTION4(Right)`)导致解析失败 → 已登记为 C9,生产 prompt 规则已更新
+  - **视觉感知**:模型能正确识别颜色(`"The non-black element is red."`),空间感知符合预期
+  - **一致性**:greedy decoding 完全确定性,相同输入 3 次相同输出
+  - **训练 pipeline**:4-bit NF4 + LoRA r=8 在 RTX A4500 (20GB) 上无 OOM,adapter 可保存
+- **结论**:方案 #3 的 VLM 主路线技术可行,Phase 2C 解锁。
+- **Iteration trigger**:
+  - 已触发"假设确认 → Phase 2C 开工"分支 → 下一步实现 `arc_agent/vlm_backbone.py` + `arc_agent/train_bc.py` + 收集人工 trace / LLM silver-label
+- **写入其它文档**:EXPERIMENTS.md Exp #4 / Exp #5;vlm_test/README.md Key findings;CODE_MAP.md vlm_test/ 段
+
+---
+
 ### 4. 双路混合 Agent — Qwen3-0.6B + LoRA + 结构化规则槽位(2026-04-27,**已放弃,改为方案 #3**)
 
 - **方案概述**(详细架构见 `ARCHITECTURE.md` §核心智能体循环 修订版):
@@ -175,6 +194,7 @@
 
 | # | 缺陷 | 影响 | 修复阶段 |
 |---|------|------|----------|
+| C9 | **VLM 提示格式缺陷:动作列表括号标签导致格式错误**(2026-05-08,vlm_test T3 实测):`ACTION4(Right)` 形式会让 Qwen2.5-VL-3B 输出 `"Right"` 而非 `"ACTION4"`,解析失败。**修复(已执行)**:所有 prompt 改为纯代码列表 `ACTION1 ACTION2 ACTION3 ACTION4`,不加括号标签。collect_data.py / test_vlm.py / tiny_train.py 均已遵循此规则。 | T3 失败 0/1;生产 prompt 若沿用旧格式会导致系统性解析失败 | Phase 2 前已修复(vlm_test/README.md) |
 | C7 | **agent_starter.py 的多处 API 调用是错的**(详见下条尝试方案 #2):import 路径错(`from arc_agi import GameAction` 应为 `from arcengine import GameAction`)、`UNDO` 不存在(应为 `ACTION7`)、`env.step` 签名错(应为 `env.step(action, data=action_data)`)、返回值结构错(返回 `obs` 对象有 `.state` 而非 5-tuple)、动作总数错(7 而非 6) | 整个脚手架跑不起来 | Phase 0,**优先级最高** |
 | C8 | **`arcengine` 包未安装**:requirements.txt 只列了 `arc-agi`,但交互式 API 在独立的 `arcengine` 包里 | 阻塞 C7 | Phase 0,需要先 `pip install arcengine` 验证可行 |
 | C1 | ~~`agent_starter.py` 的 `ALL_ACTIONS` 漏了坐标选择动作~~ → **被 C7 取代** (问题更深:整个 ALL_ACTIONS 设计就不对) | — | 已并入 C7 |

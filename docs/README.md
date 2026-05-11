@@ -36,4 +36,4 @@
 - 重命名/删除:同步改 CLAUDE.md 里的引用。
 
 ---
-最近一次更新:2026-04-28
+最近一次更新:2026-05-08(CODE_MAP.md + EXPERIMENTS.md 从 archive/ 迁回 docs/,并追加 Phase 2 / vlm_test 内容)

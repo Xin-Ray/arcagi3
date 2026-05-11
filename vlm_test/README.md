@@ -93,10 +93,28 @@ Each line is one training step:
 
 ## Key findings after running
 
-See `vlm_test/outputs/test_results.json` for measured results.
+Full results in `vlm_test/outputs/test_results.json`.  4/5 tests passed (2026-05-08).
 
-Known limitations found during testing (2026-05-08):
-- Color identification: model skips description and goes straight to action (fine for our use — we only need the action)
-- Format compliance: reliable, always outputs "ACTION: ACTIONx"
-- Consistency: identical outputs across 3 runs with same input
-- Inference speed: ~0.4s/step on RTX A4500
+| Tag | Description | Pass | Output / Action | Elapsed |
+|-----|-------------|------|-----------------|---------|
+| t1_format | blank grid — format check | PASS | "ACTION: ACTION1" | 1.15 s |
+| t2_color | single red dot — color identification | PASS | "The non-black element is red. ACTION: ACTION1" | 0.77 s |
+| t3_navigate | navigate with direction labels in prompt | **FAIL** | "ACTION: Right" → parsed as NONE | 0.36 s |
+| t4_four_corners | 4 objects at corners | PASS | "ACTION: ACTION1" | 0.40 s |
+| t5_consistency | same grid × 3 runs | PASS | "ACTION: ACTION1" ×3 identical | 1.23 s total |
+
+**Critical finding — format compliance (T3)**: when the prompt lists actions as
+`ACTION4(Right)`, the model outputs the direction label (`"Right"`) instead of
+the action code (`"ACTION4"`).  The parser then fails.  **Production rule: never
+parenthesize direction names; always list actions as plain codes
+(`ACTION1 ACTION2 ACTION3 ACTION4`).**
+
+- **Color identification (T2)**: model briefly describes the element before
+  picking an action — fine for our use.
+- **Consistency (T5)**: greedy decoding is deterministic — 3/3 identical runs
+  on the same input.
+- **Inference speed**: 0.36–1.15 s/step on RTX A4500 (shorter outputs faster;
+  action-only responses ~0.4 s).
+- **QLoRA smoke test (Step 3)**: 1-epoch training on 60 silver-label steps
+  completed without OOM; adapter saved to `outputs/checkpoint/` (PEFT 0.19.1).
+  Full training pipeline confirmed end-to-end functional.
