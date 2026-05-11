@@ -26,9 +26,10 @@
 5. **日期都用绝对日期**(YYYY-MM-DD),不要 "上周" "前两天"。
 6. **每份文档顶部维护"最近一次更新"日期**,方便判断陈旧度。
 
-## 附:操作手册(非七件套)
+## 附:实施补充(非七件套)
 
-- [HUMAN_TRACE_GUIDE.md](HUMAN_TRACE_GUIDE.md) — 人工 think-aloud 标注操作手册(Phase 1 对照实验:人工 trace vs Claude silver-label trace)。**操作流程文档,不引入方法论判断**;hypothesis 仍在 RESEARCH.md 提案 #4,实验登记仍在 EXPERIMENTS.md。
+- [ARCHITECTURE_RL.md](ARCHITECTURE_RL.md) — **当前活跃实施方案**:RL with intrinsic reward 路线设计(2026-05-11 战略转向:暂停 BC,zero-shot Qwen → GRPO + F1 verifier,5-5-5 实验切分)。本文细化了 ARCHITECTURE.md 的训练 + 推理流程,后续代码以此为蓝本。
+- [HUMAN_TRACE_GUIDE.md](HUMAN_TRACE_GUIDE.md) — 人工 think-aloud 标注操作手册(原 Phase 1 对照实验)。**当前暂停**(BC 路线 2026-05-11 起暂停,见 ARCHITECTURE_RL.md)。
 
 ## 修改本目录的流程
 
@@ -36,4 +37,4 @@
 - 重命名/删除:同步改 CLAUDE.md 里的引用。
 
 ---
-最近一次更新:2026-04-28
+最近一次更新:2026-05-11(附录加 ARCHITECTURE_RL.md;BC 路线暂停)
