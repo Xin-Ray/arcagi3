@@ -89,7 +89,8 @@ py -3.12 -m venv .venv
 | ✅ 库 | `arc_agent/llm.py` | Anthropic SDK 封装(开发期 / silver-label 用) |
 | ✅ 库 | `arc_agent/agents/random.py` | `RandomAgent` 基线 |
 | ✅ 库 | `arc_agent/agents/llm.py` | `LLMAgent`(Claude API) |
-| ⬜ 待建 | `arc_agent/agents/vlm.py` | `VLMAgent` — 见 ARCHITECTURE_RL.md §9 Step 3 |
+| ✅ 库 | `arc_agent/agents/vlm.py` | `VLMAgent` — 6 段 prompt + JSON 解析 + rule_table(§9 Step 3) |
+| ✅ 库 | `arc_agent/vlm_backbone.py` | `HFBackbone.load` / `load_model` / `generate` — Qwen2.5-VL 加载,惰性导入 |
 | ✅ 库 | `arc_agent/viz.py` | `compose_step_image`(4 宫格合成图)+ `write_gif` |
 | ⬜ 待建 | `arc_agent/train_grpo.py` | GRPO trainer 封装 — Step 7 |
 | ✅ 脚本 | `scripts/agent_starter.py` | 单局 RandomAgent demo |
@@ -110,7 +111,7 @@ py -3.12 -m venv .venv
 .
 ├── arc_agent/        库(除模型加载外不做 I/O)
 ├── scripts/          入口脚本(只编排,不放可复用逻辑)
-├── tests/            pytest(72 个全过)
+├── tests/            pytest(128 个全过)
 ├── data/             inputs/(测试 PNG)、train/(silver-label JSONL)
 ├── outputs/          runs/、checkpoints/、baseline_<ts>/ 等(gitignore)
 ├── docs/             只有 ARCHITECTURE_RL.md
@@ -191,17 +192,17 @@ outputs/
 ### B. Agent 推理引擎
 
 > **出口**:`VLMAgent.choose()` 端到端能跑 1 局不崩,JSON 解析失败有 fallback。
-> **进度**:0 / 1 完成。**当前阶段(可与 Stage 0、A 的 viz 并行做)。**
+> **进度**:2 / 2 完成 ✅(无 GPU 单测全过;端到端 1 局留待 Stage C `run_baseline.py` 验证)。
 
 | 状态 | 任务 | 路径 | §9 Step |
 |---|---|---|---|
-| ⬜ | `VLMAgent` 推理 loop(6 段 prompt + JSON 解析 + rule_table) | `arc_agent/agents/vlm.py` | 3 |
-| ⬜ | Qwen2.5-VL 加载 + generate 抽象 | `arc_agent/vlm_backbone.py` | 3(子任务) |
+| ✅ | `VLMAgent` 推理 loop(6 段 prompt + JSON 解析 + rule_table)+ 28 个测试覆盖 | `arc_agent/agents/vlm.py` | 3 |
+| ✅ | Qwen2.5-VL 加载 + generate 抽象(惰性导入 torch/transformers) | `arc_agent/vlm_backbone.py` | 3(子任务) |
 
 ### C. Baseline 评估 ★ Go/no-go gate
 
 > **出口**:在 G_base 5 个游戏上跑出 mean F1、parse 成功率、mean RHAE 三个数字,根据预注册 hypothesis 决定下一步走哪条分支(D 训练 / 改 prompt / 双图 / 回退 BC)。
-> **进度**:0 / 2 完成。**依赖 B 通过 + Stage 0 freeze_splits 跑过。**(A.viz 已 ✅)
+> **进度**:0 / 2 完成。**依赖 Stage 0 freeze_splits 跑过。**(A.viz ✅、B VLMAgent ✅)
 
 | 状态 | 任务 | 路径 | §9 Step |
 |---|---|---|---|

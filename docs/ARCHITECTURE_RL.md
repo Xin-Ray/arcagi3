@@ -477,7 +477,7 @@ CLAUDE.md 的"库优先"规则仍然强制:任何会被复用的函数必须进 
 - **测试**:`tests/test_rewards.py`(全等、全错、部分重叠、空集、shape mismatch)
 - **Acceptance**:`pytest tests/test_rewards.py -q` 全过
 
-### Step 3 — `VLMAgent` 推理 loop  ⬜
+### Step 3 — `VLMAgent` 推理 loop  ✅(2026-05-11 合入 main)
 
 - **文件**:`arc_agent/agents/vlm.py`(新建);依赖已存在的 `arc_agent/vlm_backbone.py` 抽象 — 若该文件不存在则同步建立
 - **关键签名**:
@@ -489,7 +489,7 @@ CLAUDE.md 的"库优先"规则仍然强制:任何会被复用的函数必须进 
   - 可选(GPU,`@pytest.mark.gpu`):一次 `choose` 端到端
 - **Acceptance**:无 GPU 测试全过 + 在 baseline 脚本里跑 1 局不崩
 
-### Step 4 — GIF 合成工具  ⬜
+### Step 4 — GIF 合成工具  ✅(已合入 main)
 
 - **文件**:`arc_agent/viz.py`(库)+ `scripts/make_gif.py`(脚本入口)
 - **签名**:
