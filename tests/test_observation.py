@@ -10,6 +10,7 @@ from arc_agent.observation import (
     animation_to_text,
     available_action_names,
     grid_diff,
+    grid_to_image,
     grid_to_text,
     latest_grid,
     summarize_frame,
@@ -190,3 +191,60 @@ def test_summarize_frame_no_animation_if_single_frame() -> None:
     f = _frame(grids=[g])
     out = summarize_frame(f, include_grid=False)
     assert "animation" not in out
+
+
+# ---- grid_to_image -----------------------------------------------------
+
+
+def test_grid_to_image_default_scale_8() -> None:
+    g = np.zeros((64, 64), dtype=int)
+    img = grid_to_image(g)
+    assert img.size == (512, 512)  # PIL is (width, height)
+    assert img.mode == "RGB"
+
+
+def test_grid_to_image_custom_scale() -> None:
+    g = np.zeros((4, 8), dtype=int)
+    img = grid_to_image(g, scale=3)
+    assert img.size == (24, 12)  # (W*scale, H*scale)
+
+
+def test_grid_to_image_color_mapping() -> None:
+    # cell value 1 should map to ARC blue (0, 116, 217)
+    g = np.array([[1]], dtype=int)
+    img = grid_to_image(g, scale=1)
+    assert img.getpixel((0, 0)) == (0, 116, 217)
+
+
+def test_grid_to_image_each_color_distinct() -> None:
+    g = np.arange(16, dtype=int).reshape(4, 4)
+    img = grid_to_image(g, scale=1)
+    pixels = {img.getpixel((c, r)) for r in range(4) for c in range(4)}
+    assert len(pixels) == 16  # all 16 ARC colors are distinct
+
+
+def test_grid_to_image_clip_high_equals_color_15() -> None:
+    g_high = np.array([[99]], dtype=int)
+    g_15 = np.array([[15]], dtype=int)
+    assert grid_to_image(g_high, scale=1).getpixel((0, 0)) == grid_to_image(g_15, scale=1).getpixel((0, 0))
+
+
+def test_grid_to_image_clip_low_equals_color_0() -> None:
+    g_low = np.array([[-7]], dtype=int)
+    g_0 = np.array([[0]], dtype=int)
+    assert grid_to_image(g_low, scale=1).getpixel((0, 0)) == grid_to_image(g_0, scale=1).getpixel((0, 0))
+
+
+def test_grid_to_image_rejects_non_2d() -> None:
+    with pytest.raises(ValueError):
+        grid_to_image(np.zeros((3, 3, 3), dtype=int))
+
+
+def test_grid_to_image_rejects_zero_scale() -> None:
+    with pytest.raises(ValueError):
+        grid_to_image(np.zeros((4, 4), dtype=int), scale=0)
+
+
+def test_grid_to_image_rejects_negative_scale() -> None:
+    with pytest.raises(ValueError):
+        grid_to_image(np.zeros((4, 4), dtype=int), scale=-1)
