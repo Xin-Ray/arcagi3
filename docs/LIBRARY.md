@@ -1,6 +1,6 @@
 # LIBRARY — 函数索引(API Reference)
 
-最近一次更新:2026-04-27(Phase 1 起步 + observation + llm + LLMAgent:5 个模块入库,34 个 pytest 全过)
+最近一次更新:2026-05-11(新增 `arc_agent/rewards.py`:RL verifier 内在奖励 3 个纯函数 + `grid_to_image` 测试套件补齐)
 
 所有可复用代码都放在 `arc_agent/` 包里,**每个函数都必须在本文件登记一条**。
 本文件是"先调用、再创建"工作流的目录:写新代码前先在这里搜一遍,有就直接 `from arc_agent.X import Y` 调用。
@@ -54,7 +54,7 @@
 | `arc_agent/agents/vlm.py` | VLMAgent:图像+文本双模态 HEI agent | Phase 2 |
 | `arc_agent/train_bc.py` | Stage A QLoRA BC 训练(Qwen2.5-VL-3B) | Phase 2 |
 | `arc_agent/train_rl.py` | Stage B 离线 RL 微调(PPO + KL) | Phase 3 |
-| `arc_agent/intrinsic_reward.py` | dense intrinsic reward 计算 | Phase 3 |
+| `arc_agent/rewards.py` | verifier-based intrinsic reward 工具(`changes_to_set` / `real_changes` / `verify_prediction_f1`) | **现已建立(2026-05-11)** |
 | `arc_agent/online_adapt.py` | Stage C 在线 LoRA 测试时微调 | Phase 3 |
 | `arc_agent/search.py` | UNDO + 浅 BFS / MCTS(可选) | Phase 3 |
 | `arc_agent/llm.py` | API LLM 调用封装(开发期用,prompt cache / 重试 / token 计数) | Phase 1 |
@@ -142,16 +142,63 @@
 - **依赖**:`grid_to_text`, `grid_diff`, `latest_grid`, `available_action_names`
 
 #### `arc_agent.observation.grid_to_image`
-- **状态**:experimental(Phase 2 起用,Phase 1 不需要)
+- **状态**:stable(2026-05-11 起 RL 路线核心依赖)
 - **用途**:把 grid 渲染成 PIL Image 供 Qwen2.5-VL-3B vision encoder 使用
 - **签名**:`def grid_to_image(grid: np.ndarray, scale: int = 8) -> PIL.Image.Image`
 - **输入**:`grid` (H,W) int 数组值域 0–15;`scale` 每 cell 像素边长,默认 8 → 64×64 → 512×512
-- **输出**:RGB PIL Image,使用 ARC 标准 16 色调色板
+- **输出**:RGB PIL Image,使用 ARC 标准 16 色调色板;值越界 clip 到 [0, 15]
 - **依赖**:Pillow(`PIL.Image`),numpy
-- **测试**:待添加 `tests/test_observation.py::test_grid_to_image_shape_and_colors`
-- **备注**:ARC 色 0=黑,1=蓝,2=红,3=绿,4=黄,5=灰,6=品红,7=橙,8=浅蓝,9=深红;10–15 灰阶占位
+- **测试**:`tests/test_observation.py::test_grid_to_image_{default_scale_8, custom_scale, color_mapping, each_color_distinct, clip_high_equals_color_15, clip_low_equals_color_0, rejects_non_2d, rejects_zero_scale, rejects_negative_scale}`
+- **备注**:ARC 色 0=黑,1=蓝(0,116,217),2=红,3=绿,4=黄,5=灰,6=品红,7=橙,8=浅蓝,9=深红;10–15 ARC-AGI-3 扩展色
 
-**添加 / 最后修改**:2026-04-27 / 2026-04-28
+**添加 / 最后修改**:2026-04-27 / 2026-05-11
+
+### `arc_agent/rewards.py`
+
+Verifier-based intrinsic reward 工具集合,RL 路线核心模块(详见 `docs/ARCHITECTURE_RL.md` §3)。
+3 个纯函数 + 1 个类型别名,**无副作用、无 I/O**,可在训练 loop 和推理 loop 共用。
+
+#### `arc_agent.rewards.ChangeSet`(type alias)
+- **状态**:stable
+- **定义**:`set[tuple[int, int, int]]` — 每个元素是 `(row, col, new_color)`
+- **用途**:统一 "diff 集合" 的表示,让 set ∩ / ∪ / 大小都是 O(1) 摊销
+
+#### `arc_agent.rewards.changes_to_set`
+- **状态**:stable
+- **用途**:把 Qwen 输出的 `predicted_changes` JSON 列表转成 `ChangeSet`,**对脏输入容错**(不抛异常)
+- **签名**:`def changes_to_set(changes: Any) -> ChangeSet`
+- **输入**:任意类型;期望 list[{"row": int, "col": int, "to_color": int}],非列表 / 缺 key / 类型错的条目静默丢弃
+- **输出**:`ChangeSet`,合法条目集合,自动去重
+- **依赖**:无
+- **测试**:`tests/test_rewards.py::test_changes_to_set_{well_formed_list, empty_list, drops_malformed_entries, non_list_input_returns_empty, deduplicates}`
+- **添加 / 最后修改**:2026-05-11 / 2026-05-11
+
+#### `arc_agent.rewards.real_changes`
+- **状态**:stable
+- **用途**:从 (s_t, s_{t+1}) 提取 ground-truth 变化集合(供 verifier 与 Qwen 预测比对)
+- **签名**:`def real_changes(s_t: np.ndarray, s_tp1: np.ndarray) -> ChangeSet`
+- **输入**:两个 ndarray,**形状必须一致**(否则抛 ValueError),`new_color = s_tp1[r, c]`
+- **输出**:`ChangeSet`
+- **依赖**:`numpy.where`
+- **测试**:`tests/test_rewards.py::test_real_changes_{identical_grids_empty, single_cell_changed, multiple_cells, shape_mismatch_raises}`
+- **添加 / 最后修改**:2026-05-11 / 2026-05-11
+
+#### `arc_agent.rewards.verify_prediction_f1`
+- **状态**:stable
+- **用途**:Qwen 预测集 vs 真实集 的 F1 分数,**这就是 intrinsic reward 的核心数字**
+- **签名**:`def verify_prediction_f1(predicted: ChangeSet, real: ChangeSet) -> float`
+- **输入**:两个 `ChangeSet`
+- **输出**:`float ∈ [0.0, 1.0]`
+  - 两边都空 → 1.0(正确预测"什么都不会变")
+  - 一边空一边非空 → 0.0
+  - 没交集 → 0.0
+  - 否则 `2·P·R / (P+R)`
+- **依赖**:无
+- **测试**:`tests/test_rewards.py::test_f1_{perfect_match, both_empty_means_perfect, predicted_empty_but_real_nonempty, predicted_nonempty_but_real_empty, no_intersection_is_zero, partial_overlap_known_value, wrong_color_at_right_position_counts_as_miss, symmetric}` + end-to-end `test_end_to_end_full_pipeline`
+- **添加 / 最后修改**:2026-05-11 / 2026-05-11
+- **备注**:推理时此函数返回值用于更新 `rule_table`(F1 ≥ 0.8 → +evidence, F1 < 0.5 → maybe evict);训练时此返回值乘以 0.2 后并入 GRPO reward(见 ARCHITECTURE_RL.md §3)
+
+**模块总体添加 / 最后修改**:2026-05-11 / 2026-05-11
 
 ### `arc_agent/llm.py`
 
