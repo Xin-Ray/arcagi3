@@ -1,9 +1,9 @@
 # ROADMAP — 任务清单
 
-最近一次更新:2026-05-11(战略转向:Phase 2 BC 暂停,直接 RL with intrinsic reward;详见 [ARCHITECTURE_RL.md](ARCHITECTURE_RL.md))
+最近一次更新:2026-05-11(战略转向:Phase 2 BC 暂停,直接 RL with intrinsic reward;详见 [`../vlm_test/README.md`](../vlm_test/README.md))
 当前阶段:**RL with Intrinsic Reward**(Phase 2 BC 子计划暂停;走 zero-shot Qwen baseline → GRPO + F1 verifier 路线)
 
-> **2026-05-11 战略转向**:原 Phase 2 BC fine-tune + Phase 4 PPO 路线合并/重写为单条 RL 路线。具体训练 + 推理流程见 [ARCHITECTURE_RL.md](ARCHITECTURE_RL.md)。本文件保留旧 Phase 描述作历史参考,但 Phase 2/3/4 的当前可执行计划以 ARCHITECTURE_RL.md 为准。
+> **2026-05-11 战略转向**:原 Phase 2 BC fine-tune + Phase 4 PPO 路线合并/重写为单条 RL 路线。具体训练 + 推理流程见 [`../vlm_test/README.md`](../vlm_test/README.md)(RL 路线核心文档)。本文件保留旧 Phase 描述作历史参考,但 Phase 2/3/4 的当前可执行计划以 vlm_test/README.md 为准。
 
 ---
 

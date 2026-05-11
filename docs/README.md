@@ -28,8 +28,8 @@
 
 ## 附:实施补充(非七件套)
 
-- [ARCHITECTURE_RL.md](ARCHITECTURE_RL.md) — **当前活跃实施方案**:RL with intrinsic reward 路线设计(2026-05-11 战略转向:暂停 BC,zero-shot Qwen → GRPO + F1 verifier,5-5-5 实验切分)。本文细化了 ARCHITECTURE.md 的训练 + 推理流程,后续代码以此为蓝本。
-- [HUMAN_TRACE_GUIDE.md](HUMAN_TRACE_GUIDE.md) — 人工 think-aloud 标注操作手册(原 Phase 1 对照实验)。**当前暂停**(BC 路线 2026-05-11 起暂停,见 ARCHITECTURE_RL.md)。
+- [`../vlm_test/README.md`](../vlm_test/README.md) — **当前活跃实施方案**:RL with intrinsic reward 路线设计(2026-05-11 战略转向:暂停 BC,zero-shot Qwen → GRPO + F1 verifier,5-5-5 实验切分)。这是 RL 路线的**核心实现文档**,后续代码以此为蓝本。
+- [HUMAN_TRACE_GUIDE.md](HUMAN_TRACE_GUIDE.md) — 人工 think-aloud 标注操作手册(原 Phase 1 对照实验)。**当前暂停**(BC 路线 2026-05-11 起暂停,见 `../vlm_test/README.md`)。
 
 ## 修改本目录的流程
 
@@ -37,4 +37,4 @@
 - 重命名/删除:同步改 CLAUDE.md 里的引用。
 
 ---
-最近一次更新:2026-05-11(附录加 ARCHITECTURE_RL.md;BC 路线暂停)
+最近一次更新:2026-05-11(附录指向 vlm_test/README.md 作为 RL 路线核心文档;BC 路线暂停)

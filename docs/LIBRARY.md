@@ -155,7 +155,7 @@
 
 ### `arc_agent/rewards.py`
 
-Verifier-based intrinsic reward 工具集合,RL 路线核心模块(详见 `docs/ARCHITECTURE_RL.md` §3)。
+Verifier-based intrinsic reward 工具集合,RL 路线核心模块(详见 `vlm_test/README.md` §3)。
 3 个纯函数 + 1 个类型别名,**无副作用、无 I/O**,可在训练 loop 和推理 loop 共用。
 
 #### `arc_agent.rewards.ChangeSet`(type alias)
@@ -196,7 +196,7 @@ Verifier-based intrinsic reward 工具集合,RL 路线核心模块(详见 `docs/
 - **依赖**:无
 - **测试**:`tests/test_rewards.py::test_f1_{perfect_match, both_empty_means_perfect, predicted_empty_but_real_nonempty, predicted_nonempty_but_real_empty, no_intersection_is_zero, partial_overlap_known_value, wrong_color_at_right_position_counts_as_miss, symmetric}` + end-to-end `test_end_to_end_full_pipeline`
 - **添加 / 最后修改**:2026-05-11 / 2026-05-11
-- **备注**:推理时此函数返回值用于更新 `rule_table`(F1 ≥ 0.8 → +evidence, F1 < 0.5 → maybe evict);训练时此返回值乘以 0.2 后并入 GRPO reward(见 ARCHITECTURE_RL.md §3)
+- **备注**:推理时此函数返回值用于更新 `rule_table`(F1 ≥ 0.8 → +evidence, F1 < 0.5 → maybe evict);训练时此返回值乘以 0.2 后并入 GRPO reward(见 `vlm_test/README.md` §3)
 
 **模块总体添加 / 最后修改**:2026-05-11 / 2026-05-11
 

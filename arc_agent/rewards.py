@@ -1,6 +1,6 @@
 """Verifier-based intrinsic reward primitives for RL training.
 
-Core idea (see docs/ARCHITECTURE_RL.md §3): each step the agent predicts which
+Core idea (see vlm_test/README.md §3): each step the agent predicts which
 cells will change. We compare the prediction set against the real change set
 extracted from (s_t, s_{t+1}) and score it with F1. That F1 becomes a dense
 reward signal — every step produces feedback, no need to wait for WIN.
