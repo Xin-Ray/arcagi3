@@ -13,6 +13,7 @@ from arc_agent.observation import (
     grid_to_image,
     grid_to_text,
     latest_grid,
+    serialize_step,
     summarize_frame,
 )
 
@@ -248,3 +249,87 @@ def test_grid_to_image_rejects_zero_scale() -> None:
 def test_grid_to_image_rejects_negative_scale() -> None:
     with pytest.raises(ValueError):
         grid_to_image(np.zeros((4, 4), dtype=int), scale=-1)
+
+
+# ── serialize_step (Stage 0 trace schema) ────────────────────────────────────
+
+_STEP_KEYS = {
+    "step", "game_id", "level", "state", "image_path",
+    "prompt", "response_raw", "parse_ok",
+    "predicted_diff", "chosen_action", "real_diff", "f1",
+}
+
+
+def _full_step_kwargs() -> dict:
+    return dict(
+        step=5,
+        game_id="ls20-9607627b",
+        level=1,
+        state="NOT_FINISHED",
+        image_path="step_005.png",
+        prompt="State: NOT_FINISHED ...",
+        response_raw='{"chosen_action":"ACTION3"}',
+        parse_ok=True,
+        predicted_diff={(10, 4, 2), (10, 3, 2)},
+        chosen_action="ACTION3",
+        real_diff={(10, 4, 2)},
+        f1=0.667,
+    )
+
+
+def test_serialize_step_has_all_schema_keys() -> None:
+    row = serialize_step(**_full_step_kwargs())
+    assert set(row.keys()) == _STEP_KEYS
+
+
+def test_serialize_step_diffs_are_sorted_lists_of_lists() -> None:
+    row = serialize_step(**_full_step_kwargs())
+    assert row["predicted_diff"] == [[10, 3, 2], [10, 4, 2]]
+    assert row["real_diff"] == [[10, 4, 2]]
+
+
+def test_serialize_step_diff_none_passes_through() -> None:
+    kw = _full_step_kwargs()
+    kw["predicted_diff"] = None
+    kw["real_diff"] = None
+    row = serialize_step(**kw)
+    assert row["predicted_diff"] is None
+    assert row["real_diff"] is None
+
+
+def test_serialize_step_parse_failure_shape() -> None:
+    """Failed parse: parse_ok=False, predicted_diff/chosen_action/f1 all None."""
+    row = serialize_step(
+        step=0, game_id="g", level=1, state="NOT_FINISHED",
+        image_path=None, prompt="...", response_raw="garbage", parse_ok=False,
+        predicted_diff=None, chosen_action=None, real_diff=None, f1=None,
+    )
+    assert set(row.keys()) == _STEP_KEYS
+    assert row["parse_ok"] is False
+    assert row["predicted_diff"] is None
+    assert row["chosen_action"] is None
+    assert row["f1"] is None
+    assert row["image_path"] is None
+
+
+def test_serialize_step_round_trips_through_json() -> None:
+    import json
+    row = serialize_step(**_full_step_kwargs())
+    on_disk = json.loads(json.dumps(row))
+    assert on_disk == row
+
+
+def test_serialize_step_coerces_numeric_strings() -> None:
+    """str/int leniency for upstream callers, but type-coerced in output."""
+    row = serialize_step(
+        step="3",  # type: ignore[arg-type]
+        game_id="g", level="2", state="WIN",  # type: ignore[arg-type]
+        image_path="p.png", prompt="x", response_raw="y", parse_ok=True,
+        predicted_diff=set(), chosen_action="ACTION1",
+        real_diff=set(), f1="1.0",  # type: ignore[arg-type]
+    )
+    assert row["step"] == 3
+    assert row["level"] == 2
+    assert row["f1"] == 1.0
+    assert row["predicted_diff"] == []
+    assert row["real_diff"] == []

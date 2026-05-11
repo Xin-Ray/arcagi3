@@ -301,3 +301,67 @@ def grid_to_image(grid: np.ndarray, scale: int = 8):
     rgb = np.repeat(np.repeat(rgb, scale, axis=0), scale, axis=1)  # (H*s, W*s, 3)
 
     return Image.fromarray(rgb, mode="RGB")
+
+
+# ── trace serialization (Stage 0 schema, see README §6) ──────────────────────
+
+
+def serialize_step(
+    *,
+    step: int,
+    game_id: str,
+    level: int,
+    state: str,
+    image_path: str | None,
+    prompt: str,
+    response_raw: str,
+    parse_ok: bool,
+    predicted_diff: set[tuple[int, int, int]] | None,
+    chosen_action: str | None,
+    real_diff: set[tuple[int, int, int]] | None,
+    f1: float | None,
+) -> dict:
+    """Build one trace.jsonl row with the fixed Stage 0 schema.
+
+    All 12 fields must always be present in the output (None / null when data
+    is missing). The schema is the only contract between writers and readers
+    of `outputs/baseline_<ts>/<game_id>/trace.jsonl` and friends — extend
+    here, never inline.
+
+    Schema (every field always present in returned dict):
+      step:           int            — episode step index, 0-based
+      game_id:        str            — full game id (e.g. "ls20-9607627b")
+      level:          int            — frame.levels_completed + 1
+      state:          str            — frame.state.name
+      image_path:     str | None     — relative to the run folder; None if not saved
+      prompt:         str            — full text shown to the model
+      response_raw:   str            — model output verbatim, before parsing
+      parse_ok:       bool           — JSON parse + action validation succeeded
+      predicted_diff: list[[r,c,c]] | None  — None when parse_ok=False
+      chosen_action:  str | None     — e.g. "ACTION3"; None when parse_ok=False
+      real_diff:      list[[r,c,c]] | None  — None when no env step taken
+      f1:             float | None   — None when either diff is None
+
+    `predicted_diff` and `real_diff` are sets of (row, col, new_color) for
+    in-memory work; serialized here as sorted list of [row, col, new_color]
+    triples (deterministic; JSON-friendly).
+    """
+    def _diff_to_list(d: set[tuple[int, int, int]] | None) -> list[list[int]] | None:
+        if d is None:
+            return None
+        return sorted([[int(r), int(c), int(v)] for r, c, v in d])
+
+    return {
+        "step":           int(step),
+        "game_id":        str(game_id),
+        "level":          int(level),
+        "state":          str(state),
+        "image_path":     image_path if image_path is None else str(image_path),
+        "prompt":         str(prompt),
+        "response_raw":   str(response_raw),
+        "parse_ok":       bool(parse_ok),
+        "predicted_diff": _diff_to_list(predicted_diff),
+        "chosen_action":  None if chosen_action is None else str(chosen_action),
+        "real_diff":      _diff_to_list(real_diff),
+        "f1":             None if f1 is None else float(f1),
+    }

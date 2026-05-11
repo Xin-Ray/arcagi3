@@ -83,8 +83,9 @@ py -3.12 -m venv .venv
 | 状态 | 路径 | 用途 |
 |---|---|---|
 | ✅ 库 | `arc_agent/runner.py` | Agent Protocol + `play_one()` 单局循环 |
-| ✅ 库 | `arc_agent/observation.py` | `latest_grid` / `grid_to_image` / `grid_diff` / `animation_to_text` / `summarize_frame` |
+| ✅ 库 | `arc_agent/observation.py` | `latest_grid` / `grid_to_image` / `grid_diff` / `animation_to_text` / `summarize_frame` / `serialize_step` |
 | ✅ 库 | `arc_agent/rewards.py` | `changes_to_set` / `real_changes` / `verify_prediction_f1` |
+| ✅ 库 | `arc_agent/eval_split.py` | `demo_555_split` / `write_summary` |
 | ✅ 库 | `arc_agent/llm.py` | Anthropic SDK 封装(开发期 / silver-label 用) |
 | ✅ 库 | `arc_agent/agents/random.py` | `RandomAgent` 基线 |
 | ✅ 库 | `arc_agent/agents/llm.py` | `LLMAgent`(Claude API) |
@@ -93,6 +94,7 @@ py -3.12 -m venv .venv
 | ⬜ 待建 | `arc_agent/train_grpo.py` | GRPO trainer 封装 — Step 7 |
 | ✅ 脚本 | `scripts/agent_starter.py` | 单局 RandomAgent demo |
 | ✅ 脚本 | `scripts/eval.py` | 批量评估(`--agent {random,llm,llm-haiku}`) |
+| ✅ 脚本 | `scripts/freeze_splits.py` | 一次性冻结 demo-25 5-5-5 划分到 `data/splits/demo_555.json` |
 | ⬜ 待建 | `scripts/run_baseline.py` | RL Step 5–6:zero-shot Qwen 在 G_base 上跑 + GIF |
 | ⬜ 待建 | `scripts/run_grpo.py` | RL Step 7:GRPO 训练在 G_train 上 |
 | ⬜ 待建 | `scripts/run_validation.py` | RL Step 8:训后在 G_val 上对比 |
@@ -143,13 +145,13 @@ Step 6 的预注册 hypothesis:F1 ≥ 0.30、parse 成功率 ≥ 0.70、RHAE ≤
 > ② 每步 agent 留下的 JSONL 行长什么样(字段名 + 类型) → 写在写入函数的 docstring 里,所有读写都按这个走。
 > ③ 每次 run 跑完的 summary.json 长什么样 → 同上。
 >
-> **进度**:0 / 3 完成。
+> **进度**:2 / 3(代码全在,只差跑一次 freeze_splits 把 JSON 写下来 commit)。
 
 | 状态 | 任务 | 路径 / 备注 | §9 Step |
 |---|---|---|---|
-| ⬜ | **划分冻结**:按字母序切 demo 25 → `g_base[5] / g_train[5] / g_val[5] / holdout[10]`,产出 `data/splits/demo_555.json` 并 commit。**不允许重新随机或临时换游戏**(否则训前训后没法对比) | `arc_agent/eval_split.py::demo_555_split()` + `data/splits/demo_555.json` | 5(从 5 拆出) |
-| ⬜ | **trace schema**:每步一行 JSONL,字段固定为 `step / game_id / level / state / image_path / prompt / response_raw / parse_ok / predicted_diff / chosen_action / real_diff / f1`。所有写入用同一个 helper,所有分析脚本按这个字段名读。 | `arc_agent/observation.py::serialize_step()` 顶部 docstring | 5(子任务) |
-| ⬜ | **summary schema**:每个 run 一份 `summary.json`,字段固定为 `run_kind / run_ts / git_commit / split / games / n_episodes_per_game / wall_clock_seconds / mean_f1 / parse_rate / mean_rhae / per_game{...}`。多次 run 直接对比 `summary['mean_f1']` 不会因字段名打架而崩。 | `arc_agent/eval_split.py::write_summary()` 顶部 docstring | 5(子任务) |
+| 🟡 | **划分冻结**:函数已实现 + 单测过;**还需跑一次** `scripts/freeze_splits.py`(需 ARC_API_KEY)产出 `data/splits/demo_555.json` 并 commit。**不允许重新随机或临时换游戏**(否则训前训后没法对比) | `arc_agent/eval_split.py::demo_555_split()` + `scripts/freeze_splits.py` → `data/splits/demo_555.json` | 5(从 5 拆出) |
+| ✅ | **trace schema**:`serialize_step()` 实现 + 6 个测试覆盖(全字段、parse 失败 shape、JSON round-trip、None 透传、类型强制)。每步一行 JSONL,12 字段固定。所有写入用同一个 helper,所有分析脚本按这个字段名读。 | `arc_agent/observation.py::serialize_step()` | 5(子任务) |
+| ✅ | **summary schema**:`write_summary()` 实现 + 3 个测试覆盖(必填字段全在、缺字段 raise、optional 透传)。每个 run 一份 `summary.json`,8 个必填字段固定,多次 run 直接对比 `summary['mean_f1']` 不会因字段名打架而崩。 | `arc_agent/eval_split.py::write_summary()` | 5(子任务) |
 
 **数据落盘约定**(写一次,所有 run 必须遵守):
 
