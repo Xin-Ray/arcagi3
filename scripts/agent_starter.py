@@ -4,11 +4,16 @@ ARC-AGI-3 starter agent — minimal one-game demo using the arc_agent library.
 Demonstrates the canonical SDK 0.9.x flow:
   Arcade()  ->  open_scorecard()  ->  make(game_id)  ->  step loop  ->  close_scorecard()
 
-For batch evaluation across many games, use `eval.py` instead.
+For batch evaluation across many games, use `scripts/eval.py` instead.
 Requires `ARC_API_KEY` in `.env` — anonymous mode is rejected by the live API.
 """
 
 import os
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT))
 
 from dotenv import load_dotenv
 
@@ -17,7 +22,7 @@ from arc_agi import Arcade
 from arc_agent.agents.random import RandomAgent
 from arc_agent.runner import play_one
 
-load_dotenv()
+load_dotenv(REPO_ROOT / ".env")
 
 GAME_ID = "ls20"  # any game ID listed at https://three.arcprize.org/
 MAX_ACTIONS = 80  # safety cap (matches official scaffold default)

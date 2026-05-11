@@ -7,18 +7,22 @@ Each (game, episode) appends one jsonl row to runs/<timestamp>_<tag>.jsonl,
 and a final summary is printed and stored as the last row with `__summary__: true`.
 
 Examples:
-    .venv/Scripts/python.exe eval.py                       # RandomAgent, all games, 1 ep each
-    .venv/Scripts/python.exe eval.py --episodes 3
-    .venv/Scripts/python.exe eval.py --games ls20,vc33
+    .venv/Scripts/python.exe scripts/eval.py                       # RandomAgent, all games, 1 ep each
+    .venv/Scripts/python.exe scripts/eval.py --episodes 3
+    .venv/Scripts/python.exe scripts/eval.py --games ls20,vc33
 """
 from __future__ import annotations
 
 import argparse
 import json
 import os
+import sys
 import time
 from pathlib import Path
 from typing import Any
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT))
 
 from dotenv import load_dotenv
 
@@ -29,10 +33,9 @@ from arc_agent.agents.random import RandomAgent
 from arc_agent.llm import LLMClient
 from arc_agent.runner import play_one as _play_one
 
-load_dotenv()
+load_dotenv(REPO_ROOT / ".env")
 
-REPO_ROOT = Path(__file__).resolve().parent
-RUNS_DIR = REPO_ROOT / "runs"
+RUNS_DIR = REPO_ROOT / "outputs" / "runs"
 
 
 def _check_key() -> None:
@@ -138,7 +141,7 @@ def main() -> None:
     if not games:
         raise RuntimeError("No games to play. Check --games or your API key access.")
 
-    RUNS_DIR.mkdir(exist_ok=True)
+    RUNS_DIR.mkdir(parents=True, exist_ok=True)
     ts = time.strftime("%Y%m%d_%H%M%S")
     out_path = Path(args.output) if args.output else RUNS_DIR / f"{ts}_{args.tag}.jsonl"
 

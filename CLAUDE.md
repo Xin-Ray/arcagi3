@@ -8,13 +8,16 @@ ARC-AGI-3 competition agent research (ARC Prize 2026). The goal is to build agen
 
 ## Single source of truth
 
-The active design doc is **`docs/ARCHITECTURE_RL.md`** — read it before doing any substantive work. Everything else previously in `docs/` (ARCHITECTURE / LIBRARY / PAPER / ROADMAP / RESEARCH / EXPERIMENTS / CODE_MAP / README) was archived to `archive/docs_2026-05-11/` on 2026-05-11. Treat the archive as read-only history. New design notes, status, and Run Log entries go into `docs/ARCHITECTURE_RL.md` directly (see its §9 Run Log).
+Two entry docs:
 
-`vlm_test/README.md` is the implementation-side companion (folder layout, commands, status table).
+- **`README.md`** — 3-minute project takeover (project goal, data flow, what to run, current state, TODO).
+- **`docs/ARCHITECTURE_RL.md`** — deep design doc + §9 file-level implementation steps + Run Log. Read before any substantive work.
+
+Everything else previously in `docs/` and the old `vlm_test/` workspace was archived to `archive/` on 2026-05-11 (read-only history). New design notes, status, and Run Log entries go into `docs/ARCHITECTURE_RL.md` directly.
 
 ## Library-first coding (mandatory)
 
-All reusable logic lives in the `arc_agent/` package. Scripts (`vlm_test/scripts/`, root `.py`) do I/O orchestration only — **no reusable logic in scripts**.
+All reusable logic lives in the `arc_agent/` package. Scripts in `scripts/` do I/O orchestration only — **no reusable logic in scripts**.
 
 Before writing any function-shaped piece of code:
 
@@ -30,10 +33,15 @@ Deprecation: don't delete; mark `Status: deprecated → <replacement>` in a docs
 
 Pivoted from BC training (Phase 2) to **RL with intrinsic F1 reward** on 2026-05-11 (see `docs/ARCHITECTURE_RL.md` §0 战略决策). Current step: `docs/ARCHITECTURE_RL.md` §9 Step 3 (`VLMAgent` 推理 loop) — Steps 1–2 (`grid_to_image`, `rewards.py` primitives) are merged.
 
-- `agent_starter.py` — single-game demo, imports `RandomAgent` + `play_one` from the library
-- `eval.py` — batch evaluator across N game × M episode, writes `runs/<ts>_<tag>.jsonl`; `--agent {random,llm,llm-haiku}`, `--budget` USD hard stop
-- `arc_agent/` — library: `runner.py` (Agent Protocol + `play_one`), `observation.py` (grid → text/diff/image), `rewards.py` (verifier F1 primitives), `llm.py` (Anthropic wrapper), `agents/{random,llm}.py`
-- `tests/` — pytest suite (passing as of 2026-05-11; verifier + grid_to_image tests added on RL branch)
+Folder layout (post-restructure 2026-05-11):
+
+- `arc_agent/` — library: `runner.py`, `observation.py` (grid → text/diff/image), `rewards.py` (verifier F1 primitives), `llm.py`, `agents/{random,llm}.py`
+- `scripts/` — entry points: `agent_starter.py` (single-game demo), `eval.py` (batch evaluator). `run_baseline.py` / `run_grpo.py` / `run_validation.py` to be added per `docs/ARCHITECTURE_RL.md` §9 Steps 5–8.
+- `tests/` — pytest suite (72 passing as of 2026-05-11)
+- `data/` — `inputs/` (capability-test PNGs), `train/` (silver-label dataset.jsonl + gitignored images)
+- `outputs/` — `runs/` (eval jsonl, gitignored), `checkpoints/` (training, gitignored), `smoke_test/` (old QLoRA artifacts)
+- `docs/ARCHITECTURE_RL.md` — only active design doc
+- `archive/` — `docs_2026-05-11/` (old seven-doc set), `bc_scripts/` (paused BC pipeline), `old_runs/`, `vlm_test_README.md`, etc.
 - `vendor/ARC-AGI-3-Agents/` — read-only clone of the official scaffold; do **not** edit
 
 **Backbone**: Qwen2.5-VL-3B-Instruct (chosen 2026-04-28). 64×64 grid → 512×512 PNG via `arc_agent.observation.grid_to_image`, fed to the ViT vision encoder. The text-only Qwen3-0.6B route was dropped because hex-encoded grids miss 2D spatial structure (vertically adjacent cells are ~64 tokens apart in a 1D sequence).
@@ -57,32 +65,32 @@ A real `ARC_API_KEY` from https://arcprize.org/api-keys must be in `.env` at the
 
 ```bash
 # Single-game demo against live SDK (requires real ARC_API_KEY in .env)
-.venv/Scripts/python.exe agent_starter.py
+.venv/Scripts/python.exe scripts/agent_starter.py
 
 # Batch eval — RandomAgent on all available demo games, 1 episode each
-.venv/Scripts/python.exe eval.py
+.venv/Scripts/python.exe scripts/eval.py
 
 # Batch eval — LLMAgent on three keyboard games, 3 episodes each
-.venv/Scripts/python.exe eval.py --agent llm --games ls20,tr87,wa30 --episodes 3 --tag llm_keyboard
+.venv/Scripts/python.exe scripts/eval.py --agent llm --games ls20,tr87,wa30 --episodes 3 --tag llm_keyboard
 
 # Tests (full suite, then a single test by node id)
 .venv/Scripts/python.exe -m pytest tests/ -q
 .venv/Scripts/python.exe -m pytest tests/test_rewards.py -q
 ```
 
-`eval.py` flags: `--agent {random,llm,llm-haiku}`, `--games <comma-list-or-prefix>` (empty = all available demo games), `--episodes N`, `--max-actions N` (default 80), `--tag <label>`, `--output <path>`. It writes one jsonl row per (game, episode) plus a final `__summary__` row to `runs/<ts>_<tag>.jsonl`.
+`scripts/eval.py` flags: `--agent {random,llm,llm-haiku}`, `--games <comma-list-or-prefix>` (empty = all available demo games), `--episodes N`, `--max-actions N` (default 80), `--tag <label>`, `--output <path>`. It writes one jsonl row per (game, episode) plus a final `__summary__` row to `outputs/runs/<ts>_<tag>.jsonl`.
 
 RL-line entry points (planned per `docs/ARCHITECTURE_RL.md` §9):
 
 ```bash
 # Step 6 — Baseline (Go/no-go gate)
-.venv/Scripts/python.exe vlm_test/scripts/run_baseline.py --output vlm_test/outputs/baseline_<ts>
+.venv/Scripts/python.exe scripts/run_baseline.py --output outputs/baseline_<ts>
 
 # Step 7 — GRPO training
-.venv/Scripts/python.exe vlm_test/scripts/run_grpo.py --output vlm_test/outputs/grpo_<ts>
+.venv/Scripts/python.exe scripts/run_grpo.py --output outputs/grpo_<ts>
 
 # Step 8 — Validation (post-training)
-.venv/Scripts/python.exe vlm_test/scripts/run_validation.py --checkpoint <path> --output vlm_test/outputs/validation_<ts>
+.venv/Scripts/python.exe scripts/run_validation.py --checkpoint <path> --output outputs/validation_<ts>
 ```
 
 ## Core Concepts
@@ -128,7 +136,7 @@ scorecard = arc.close_scorecard(card_id)        # .score is overall RHAE
 Notes:
 - Action enum lives in `arcengine`, **not** `arc_agi`. Both are pinned in `requirements.txt`.
 - `env.step` returns a single `FrameDataRaw` object (not a 5-tuple). Use `latest.state`, `latest.levels_completed`, `latest.guid`, `latest.frame` (and remember `latest.win_levels` is the total level count, not wins).
-- A single scorecard can span many `arc.make(...)` calls — `play_one` does **not** close the scorecard so the caller can run a whole batch under one card. `eval.py` opens one card per run and closes it at the end.
+- A single scorecard can span many `arc.make(...)` calls — `play_one` does **not** close the scorecard so the caller can run a whole batch under one card. `scripts/eval.py` opens one card per run and closes it at the end.
 - `render_mode="terminal"` is available for visual debugging; omit for speed.
 
 ## Key Links

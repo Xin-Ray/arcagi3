@@ -9,6 +9,7 @@
 __pycache__/
 *.py[cod]
 *.egg-info/
+.pytest_cache/
 
 # SDK-managed dirs
 environment_files/
@@ -18,13 +19,16 @@ logs.log
 # vendored read-only reference
 vendor/
 
-# our experiment outputs
-runs/
+# experiment outputs (large, regeneratable)
+outputs/runs/
+outputs/checkpoints/
+outputs/baseline_*/
+outputs/grpo_*/
+outputs/validation_*/
 
-# training checkpoints and processed data (large)
-checkpoints/
+# old smoke-test LoRA adapter (kept for history but heavy)
+outputs/smoke_test/checkpoint/
+
+# training image data (regeneratable from collect_data)
+data/train/images/
 data/processed/
-
-# vlm_test large files (PNG images and LoRA weights)
-vlm_test/data/train/images/
-vlm_test/outputs/checkpoint/

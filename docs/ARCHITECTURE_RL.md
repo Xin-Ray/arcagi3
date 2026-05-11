@@ -447,7 +447,7 @@ A: 实施 §6 第 5 步前先 `arc.list_games()` 拉取 demo 25 完整列表,然
 
 为了保持简单,旧的七件套(ARCHITECTURE / LIBRARY / PAPER / ROADMAP / RESEARCH / EXPERIMENTS / CODE_MAP / README)已**整体归档**到 `archive/docs_2026-05-11/`,**只读保留作历史**。
 
-当前 `docs/` 目录**只有本文件**。新代码、新决策、新实验的所有正式文档需求,统一写在本文件内或对应的代码注释 / 测试断言里。`vlm_test/README.md` 是本文件的实施侧 README(命令、文件夹布局、状态表)。
+当前 `docs/` 目录**只有本文件**。新代码、新决策、新实验的所有正式文档需求,统一写在本文件内或对应的代码注释 / 测试断言里。项目根目录的 `README.md` 是 3 分钟接管入口,本文件是深度参考;两者职责不重叠。
 
 CLAUDE.md 的"库优先"规则仍然强制:任何会被复用的函数必须进 `arc_agent/`,在源码注释里写清签名和用途;不再要求维护单独的 LIBRARY.md 索引。
 
@@ -491,25 +491,25 @@ CLAUDE.md 的"库优先"规则仍然强制:任何会被复用的函数必须进 
 
 ### Step 4 — GIF 合成工具  ⬜
 
-- **文件**:`arc_agent/viz.py`(库)+ `vlm_test/scripts/make_gif.py`(脚本入口)
+- **文件**:`arc_agent/viz.py`(库)+ `scripts/make_gif.py`(脚本入口)
 - **签名**:
   - `compose_step_image(grid_now: np.ndarray, predicted_diff: ChangeSet, grid_next: np.ndarray, json_text: str, *, header: str) -> PIL.Image.Image`(§5.2 四宫格布局)
   - `write_gif(frames: list[PIL.Image.Image], out_path: str | Path, *, fps: int = 2) -> None`
 - **测试**:`tests/test_viz.py`
   - `compose_step_image` 输出非空 + 尺寸正确(宽 ≥ 2× 单图,高同理)
   - `write_gif` 在 tmp_path 写出文件,大小 > 0
-- **Acceptance**:测试过 + baseline 跑完后 `vlm_test/outputs/baseline_<ts>/<game_id>/play.gif` 能在浏览器播放
+- **Acceptance**:测试过 + baseline 跑完后 `outputs/baseline_<ts>/<game_id>/play.gif` 能在浏览器播放
 
 ### Step 5 — `scripts/run_baseline.py`  ⬜
 
-- **文件**:`vlm_test/scripts/run_baseline.py`
+- **文件**:`scripts/run_baseline.py`
 - **职责**(脚本只编排,逻辑全在库里):
   1. `arc.list_games()` → 按字母序固定切 G_base / G_train / G_val(可复现);切分逻辑放进 `arc_agent/eval_split.py::demo_555_split() -> dict[str, list[str]]`
   2. 对 G_base 5 个游戏各跑 1 episode,用 `arc_agent.runner.play_one` + `VLMAgent`
   3. 每步保存 `step_<n>.png`(`viz.compose_step_image`)+ JSONL 一行(prompt / response / f1 / parse_ok)
   4. 整局结束 `viz.write_gif(...)`,生成 `play.gif`
   5. 全部完成写 `summary.json`:每个游戏的 mean F1 / parse_rate / RHAE
-- **CLI**:`--games <ids> --episodes 1 --output vlm_test/outputs/baseline_<ts>`(--games 默认从 5-5-5 切分取 G_base)
+- **CLI**:`--games <ids> --episodes 1 --output outputs/baseline_<ts>`(--games 默认从 5-5-5 切分取 G_base)
 - **Acceptance**:run 一次后产物齐全(每游戏一个文件夹,含 PNG、GIF、trace.jsonl、summary.json)
 
 ### Step 6 — 跑 Baseline + 验证 Hypothesis  ⬜  ★ Go/no-go gate
@@ -518,7 +518,7 @@ CLAUDE.md 的"库优先"规则仍然强制:任何会被复用的函数必须进 
   - Mean F1 在 G_base ≥ 0.30
   - Mean RHAE 在 G_base ≤ 0.05
   - JSON parse 成功率 ≥ 0.70
-- **执行**:`python vlm_test/scripts/run_baseline.py`
+- **执行**:`python scripts/run_baseline.py`
 - **Iteration trigger**(根据 summary.json 里的实测数字分支):
   - F1 ≥ 0.3 且 parse ≥ 0.7 → 进入 Step 7(GRPO 训练)
   - F1 < 0.1 → 升级双图输入(上帧 + 当前帧);仍不行 → 回退 BC 路线
@@ -528,19 +528,19 @@ CLAUDE.md 的"库优先"规则仍然强制:任何会被复用的函数必须进 
 
 ### Step 7 — `scripts/run_grpo.py`  ⬜
 
-- **文件**:`vlm_test/scripts/run_grpo.py`(脚本)+ `arc_agent/train_grpo.py`(库,封装 trl.GRPOTrainer 的 setup)
+- **文件**:`scripts/run_grpo.py`(脚本)+ `arc_agent/train_grpo.py`(库,封装 trl.GRPOTrainer 的 setup)
 - **签名**:
   - `arc_agent/train_grpo.py::build_trainer(model, processor, reward_fn: Callable, train_games: list[str], **grpo_kwargs) -> GRPOTrainer`
   - `arc_agent/train_grpo.py::reward_fn(rollout_step) -> float`(§3 公式:1.0 win + 0.2*F1 − 0.5 parse_fail − 0.3 illegal_action)
-- **CLI**:`--games <5 train ids> --val-games <5 val ids> --steps N --val-every 50 --output vlm_test/outputs/grpo_<ts>`
+- **CLI**:`--games <5 train ids> --val-games <5 val ids> --steps N --val-every 50 --output outputs/grpo_<ts>`
 - **测试**:`tests/test_train_grpo.py::test_reward_fn_*`(每条惩罚/奖励路径单独覆盖)
 - **Acceptance**:reward_fn 单测过 + 在 G_train 上能跑出至少 50 个 GRPO step 不 OOM(显存日志记 peak ≤ 18GB)
 
 ### Step 8 — GRPO 训练 + Validation  ⬜
 
 - **预注册 Hypothesis**:G_val mean RHAE 训后比训前提升 ≥ 0.05;G_train 提升 ≥ 0.10(sanity check)
-- **训练**:`python vlm_test/scripts/run_grpo.py ...`,wall-clock ≤ 4 GPU-days,early stop 看 G_val mean RHAE 连续 3 次 val 不涨
-- **Validation**:`vlm_test/scripts/run_validation.py --checkpoint <path> --games <G_val>`(复用 Step 5 的脚本骨架,换 checkpoint)
+- **训练**:`python scripts/run_grpo.py ...`,wall-clock ≤ 4 GPU-days,early stop 看 G_val mean RHAE 连续 3 次 val 不涨
+- **Validation**:`scripts/run_validation.py --checkpoint <path> --games <G_val>`(复用 Step 5 的脚本骨架,换 checkpoint)
 - **关键判断**:
   - `F1_v_post > F1_v_pre` → 训出真本事
   - `F1_t_post 涨 / F1_v_post ≈ pre` → 过拟合,记录失败模式
