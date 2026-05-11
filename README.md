@@ -90,11 +90,12 @@ py -3.12 -m venv .venv
 | ✅ 库 | `arc_agent/agents/random.py` | `RandomAgent` 基线 |
 | ✅ 库 | `arc_agent/agents/llm.py` | `LLMAgent`(Claude API) |
 | ⬜ 待建 | `arc_agent/agents/vlm.py` | `VLMAgent` — 见 ARCHITECTURE_RL.md §9 Step 3 |
-| ⬜ 待建 | `arc_agent/viz.py` | GIF / 单步合成图 — Step 4 |
+| ✅ 库 | `arc_agent/viz.py` | `compose_step_image`(4 宫格合成图)+ `write_gif` |
 | ⬜ 待建 | `arc_agent/train_grpo.py` | GRPO trainer 封装 — Step 7 |
 | ✅ 脚本 | `scripts/agent_starter.py` | 单局 RandomAgent demo |
 | ✅ 脚本 | `scripts/eval.py` | 批量评估(`--agent {random,llm,llm-haiku}`) |
 | ✅ 脚本 | `scripts/freeze_splits.py` | 一次性冻结 demo-25 5-5-5 划分到 `data/splits/demo_555.json` |
+| ✅ 脚本 | `scripts/make_gif.py` | 把一个 run 文件夹的 `step_*.png` 合成 `play.gif` |
 | ⬜ 待建 | `scripts/run_baseline.py` | RL Step 5–6:zero-shot Qwen 在 G_base 上跑 + GIF |
 | ⬜ 待建 | `scripts/run_grpo.py` | RL Step 7:GRPO 训练在 G_train 上 |
 | ⬜ 待建 | `scripts/run_validation.py` | RL Step 8:训后在 G_val 上对比 |
@@ -179,13 +180,13 @@ outputs/
 ### A. 通用工具(基础积木)
 
 > **出口**:其它阶段需要的所有库函数已实现且单测过。
-> **进度**:2 / 3 完成。
+> **进度**:3 / 3 完成 ✅。
 
 | 状态 | 任务 | 路径 | §9 Step |
 |---|---|---|---|
 | ✅ | 渲染:`grid_to_image()` | `arc_agent/observation.py` | 1 |
 | ✅ | F1 verifier 三件套(`changes_to_set` / `real_changes` / `verify_prediction_f1`) | `arc_agent/rewards.py` | 2 |
-| ⬜ | 可视化:单步合成图 + GIF 写出 | `arc_agent/viz.py` + `scripts/make_gif.py` | 4 |
+| ✅ | 可视化:`compose_step_image`(4 宫格)+ `write_gif`(13 个测试覆盖)+ standalone `make_gif.py` | `arc_agent/viz.py` + `scripts/make_gif.py` | 4 |
 
 ### B. Agent 推理引擎
 
@@ -200,7 +201,7 @@ outputs/
 ### C. Baseline 评估 ★ Go/no-go gate
 
 > **出口**:在 G_base 5 个游戏上跑出 mean F1、parse 成功率、mean RHAE 三个数字,根据预注册 hypothesis 决定下一步走哪条分支(D 训练 / 改 prompt / 双图 / 回退 BC)。
-> **进度**:0 / 2 完成。**依赖 Stage 0 + A.viz + B 全部通过。**
+> **进度**:0 / 2 完成。**依赖 B 通过 + Stage 0 freeze_splits 跑过。**(A.viz 已 ✅)
 
 | 状态 | 任务 | 路径 | §9 Step |
 |---|---|---|---|
