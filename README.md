@@ -130,25 +130,111 @@ Step 6 的预注册 hypothesis:F1 ≥ 0.30、parse 成功率 ≥ 0.70、RHAE ≤
 
 ---
 
-## 6. TODO
+## 6. TODO(按阶段板块)
 
-**当前活跃工作**:`docs/ARCHITECTURE_RL.md` §9 — 文件级 acceptance criteria。
+6 个阶段顺序推进。**每个阶段有明确出口准则**(达到才算这阶段完),阶段内的任务都对应 `docs/ARCHITECTURE_RL.md` §9 的某个 Step,文件级 acceptance criteria 在那里看。
 
-| # | 内容 | 状态 |
+> **关于数据(读一次)**:这是 RL 不是监督学习,**没有静态训练集**。GRPO 训练数据是 agent 在 G_train 上实时生成的 rollouts(epoch 间不复用、不持久化)。"训练/验证/测试" 在本项目里 = **游戏 ID 划分**(下面 Stage 0)。唯一持久化的是每次 run 的产物(trace.jsonl + 合成图 + GIF + summary,落 `outputs/<kind>_<ts>/`)。BC 收集 / 处理流程只在 C 阶段失败回退时才启用,代码已在 `archive/bc_scripts/` 备着。
+
+### Stage 0. 数据基础(划分 + 存储 schema)
+
+> **出口(人话)**:跑任何 baseline / GRPO / validation 之前,先把这三件事定下来 —
+> ① 哪 5 个游戏是 baseline、哪 5 个是训练、哪 5 个是验证 → 写成一个 JSON 文件 commit 进 git,以后不许改。
+> ② 每步 agent 留下的 JSONL 行长什么样(字段名 + 类型) → 写在写入函数的 docstring 里,所有读写都按这个走。
+> ③ 每次 run 跑完的 summary.json 长什么样 → 同上。
+>
+> **进度**:0 / 3 完成。
+
+| 状态 | 任务 | 路径 / 备注 | §9 Step |
+|---|---|---|---|
+| ⬜ | **划分冻结**:按字母序切 demo 25 → `g_base[5] / g_train[5] / g_val[5] / holdout[10]`,产出 `data/splits/demo_555.json` 并 commit。**不允许重新随机或临时换游戏**(否则训前训后没法对比) | `arc_agent/eval_split.py::demo_555_split()` + `data/splits/demo_555.json` | 5(从 5 拆出) |
+| ⬜ | **trace schema**:每步一行 JSONL,字段固定为 `step / game_id / level / state / image_path / prompt / response_raw / parse_ok / predicted_diff / chosen_action / real_diff / f1`。所有写入用同一个 helper,所有分析脚本按这个字段名读。 | `arc_agent/observation.py::serialize_step()` 顶部 docstring | 5(子任务) |
+| ⬜ | **summary schema**:每个 run 一份 `summary.json`,字段固定为 `run_kind / run_ts / git_commit / split / games / n_episodes_per_game / wall_clock_seconds / mean_f1 / parse_rate / mean_rhae / per_game{...}`。多次 run 直接对比 `summary['mean_f1']` 不会因字段名打架而崩。 | `arc_agent/eval_split.py::write_summary()` 顶部 docstring | 5(子任务) |
+
+**数据落盘约定**(写一次,所有 run 必须遵守):
+
+```
+data/
+├── splits/
+│   └── demo_555.json           ★ 冻结划分 — 不允许重新随机
+├── inputs/                     5 个能力测试 PNG(2026-05-08 留下)
+└── train/
+    └── dataset.jsonl           BC fallback 用的 60 行 silver-label(暂封存)
+
+outputs/
+├── runs/<ts>_<tag>.jsonl       eval.py 的批量评估输出
+├── baseline_<ts>/<game_id>/
+│   ├── step_<n>.png            合成图(grid + 预测 + 真实 + JSON)
+│   ├── trace.jsonl             每步一行,字段见上
+│   └── play.gif                整局 GIF
+├── grpo_<ts>/
+│   ├── checkpoint/             LoRA adapter
+│   ├── train_log.jsonl         GRPO 每 step 的 reward / loss
+│   └── val_<step>.json         每 N step 在 G_val 上的快照
+└── validation_<ts>/<game_id>/  同 baseline 结构,加载训后 checkpoint
+```
+
+### A. 通用工具(基础积木)
+
+> **出口**:其它阶段需要的所有库函数已实现且单测过。
+> **进度**:2 / 3 完成。
+
+| 状态 | 任务 | 路径 | §9 Step |
+|---|---|---|---|
+| ✅ | 渲染:`grid_to_image()` | `arc_agent/observation.py` | 1 |
+| ✅ | F1 verifier 三件套(`changes_to_set` / `real_changes` / `verify_prediction_f1`) | `arc_agent/rewards.py` | 2 |
+| ⬜ | 可视化:单步合成图 + GIF 写出 | `arc_agent/viz.py` + `scripts/make_gif.py` | 4 |
+
+### B. Agent 推理引擎
+
+> **出口**:`VLMAgent.choose()` 端到端能跑 1 局不崩,JSON 解析失败有 fallback。
+> **进度**:0 / 1 完成。**当前阶段(可与 Stage 0、A 的 viz 并行做)。**
+
+| 状态 | 任务 | 路径 | §9 Step |
+|---|---|---|---|
+| ⬜ | `VLMAgent` 推理 loop(6 段 prompt + JSON 解析 + rule_table) | `arc_agent/agents/vlm.py` | 3 |
+| ⬜ | Qwen2.5-VL 加载 + generate 抽象 | `arc_agent/vlm_backbone.py` | 3(子任务) |
+
+### C. Baseline 评估 ★ Go/no-go gate
+
+> **出口**:在 G_base 5 个游戏上跑出 mean F1、parse 成功率、mean RHAE 三个数字,根据预注册 hypothesis 决定下一步走哪条分支(D 训练 / 改 prompt / 双图 / 回退 BC)。
+> **进度**:0 / 2 完成。**依赖 Stage 0 + A.viz + B 全部通过。**
+
+| 状态 | 任务 | 路径 | §9 Step |
+|---|---|---|---|
+| ⬜ | baseline 脚本(5-5-5 切分 + 每步合成图 + summary.json) | `scripts/run_baseline.py` | 5 |
+| ⬜ | **跑 baseline + 写结论到 §9 Run Log** | — | 6 |
+
+**预注册 Hypothesis**(运行前必须 commit):F1 ≥ 0.30、parse ≥ 0.70、RHAE ≤ 0.05。
+**分支决策**:F1 ≥ 0.3 + parse ≥ 0.7 → 进 D / F1 < 0.1 → 双图 → 仍不行回退 BC / parse < 0.5 → 改 prompt 重跑 / 中间态 → 消融。
+
+### D. RL 训练(GRPO + intrinsic F1 reward)
+
+> **出口**:G_val mean RHAE 训后比训前涨 ≥ 0.05;否则记录失败模式回头诊断。
+> **进度**:0 / 2 完成。**依赖 C 通过。**
+
+| 状态 | 任务 | 路径 | §9 Step |
+|---|---|---|---|
+| ⬜ | GRPO trainer 封装(reward_fn 单测全过 + 不 OOM) | `arc_agent/train_grpo.py` + `scripts/run_grpo.py` | 7 |
+| ⬜ | 跑 GRPO 训练(≤ 4 GPU-days,early stop)+ Validation 对比 | `scripts/run_validation.py` | 8 |
+
+### E. 部署提交(Kaggle 离线)
+
+> **出口**:能在 Kaggle T4 16GB 离线 notebook 上跑完 110 个游戏 ≤ 10 小时,提交得分。
+> **进度**:0 / 3 完成。**依赖 D 通过。**
+
+| 状态 | 任务 | 备注 |
 |---|---|---|
-| 1 | `grid_to_image()` | ✅ 完成 |
-| 2 | `rewards.py`(changes_to_set / real_changes / verify_prediction_f1) | ✅ 完成 |
-| 3 | `arc_agent/agents/vlm.py` + backbone 抽象 | ⬜ 下一步 |
-| 4 | `arc_agent/viz.py` + `scripts/make_gif.py` | ⬜ |
-| 5 | `scripts/run_baseline.py` | ⬜ |
-| 6 | **跑 baseline + 验证 Hypothesis** ★ Go/no-go | ⬜ |
-| 7 | `scripts/run_grpo.py` + `arc_agent/train_grpo.py` | ⬜ |
-| 8 | GRPO 训练 + Validation | ⬜ |
+| ⬜ | 验证 4-bit 量化模型在 T4 16GB 加载 | 显存余量 ≥ 2GB |
+| ⬜ | 打包离线 notebook(模型权重 + LoRA + 全部依赖)| 不允许联网 |
+| ⬜ | 实测 110 games 整体时延 ≤ 10h | 含 reset / 失败重启 buffer |
 
-**已知风险**
+---
 
-- **Step 6 可能失败**。如果 F1 < 0.1,fallback 是双图输入(上帧 + 当前帧);仍不行则回退到 BC 训练(暂停的分支在 `archive/bc_scripts/`)。
-- **Kaggle 终评无网**。最终提交必须离线。Qwen2.5-VL-3B 4-bit 能装进 T4 16GB,但 110 个游戏 ≤ 10 小时的整体时延还没实测。
+**已知风险**(可能改变路线的事)
+
+- **C 阶段 Go/no-go 可能不通**。F1 < 0.1 时先升级双图输入,仍不行回退 BC(`archive/bc_scripts/`)。这会把整体路线推后 2-3 周。
+- **Kaggle 终评无网**。E 阶段还没实测,Qwen 4-bit 装得下但时延有风险。
 
 ---
 
