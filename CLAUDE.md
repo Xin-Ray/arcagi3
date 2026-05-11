@@ -1,111 +1,57 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code working in this repository.
 
 ## Project
 
 ARC-AGI-3 competition agent research (ARC Prize 2026). The goal is to build agents that autonomously explore turn-based game environments with no instructions, infer rules, discover win conditions, and complete levels efficiently. See `TASK_OVERVIEW.md` for full competition details.
 
-## Working Workflow — `docs/` is mandatory
+## Single source of truth
 
-This project uses seven tracking docs in `docs/` (six internal + one outward-facing living paper) as durable working memory. **Every session must follow this loop:**
+The active design doc is **`docs/ARCHITECTURE_RL.md`** — read it before doing any substantive work. Everything else previously in `docs/` (ARCHITECTURE / LIBRARY / PAPER / ROADMAP / RESEARCH / EXPERIMENTS / CODE_MAP / README) was archived to `archive/docs_2026-05-11/` on 2026-05-11. Treat the archive as read-only history. New design notes, status, and Run Log entries go into `docs/ARCHITECTURE_RL.md` directly (see its §9 Run Log).
 
-1. **Before doing anything substantive**, read the relevant doc(s):
-   - `docs/ROADMAP.md` — what phase we're in, what's the next unchecked task
-   - `docs/CODE_MAP.md` — which file does what (before modifying any module)
-   - `docs/LIBRARY.md` — what functions already exist (before writing any code — see "Library-first" below)
-   - `docs/ARCHITECTURE.md` — module responsibilities and data flow (before designing/changing interfaces)
-   - `docs/RESEARCH.md` — past attempts, known defects, open questions (before proposing a new approach)
-   - `docs/EXPERIMENTS.md` — measured numbers (before claiming improvement)
-   - `docs/PAPER.md` — outward-facing narrative (before any external write-up or stakeholder report)
-   - `docs/README.md` — index of the above
-2. **After finishing work**, write changes back to the right doc(s):
-   - New / removed / refactored module → `CODE_MAP.md`
-   - New / changed / deprecated **function** → `LIBRARY.md`
-   - Interface or responsibility change → `ARCHITECTURE.md`
-   - Tried an approach (success **or** failure) / read a paper / found a defect → `RESEARCH.md`
-   - Ran an experiment with a conclusion → `EXPERIMENTS.md` (append-only, never overwrite)
-   - Completed a roadmap item / changed phase → `ROADMAP.md`
-   - **Anything that crosses into outward narrative** → `PAPER.md` (see "Living paper" below)
+`vlm_test/README.md` is the implementation-side companion (folder layout, commands, status table).
 
-Rules: absolute dates only (YYYY-MM-DD), append-only history, failures must be recorded, one fact lives in one doc.
+## Library-first coding (mandatory)
 
-### Living paper — `PAPER.md`
+All reusable logic lives in the `arc_agent/` package. Scripts (`vlm_test/scripts/`, root `.py`) do I/O orchestration only — **no reusable logic in scripts**.
 
-`PAPER.md` is the project's **outward-facing artifact**: a paper-format draft that grows with the project, ready for Milestone #1 / #2 open-source submissions and any external write-up. It **does not introduce new facts** — it re-narrates facts that already exist in the other six docs into Abstract / Intro / Related Work / Method / Experiments / Discussion / Conclusion / References.
+Before writing any function-shaped piece of code:
 
-Update triggers (mandatory — same loop, just one extra check at the end of substantive work):
+1. **Search `arc_agent/` first** with Grep for the symbol or behavior. If it exists → `from arc_agent.<mod> import <fn>`.
+2. **Decide its module.** Anything that will plausibly be called twice goes into `arc_agent/<mod>.py`, not into a script.
+3. **Implement** with type annotations + a one-line docstring. Pure functions where possible; library code does no env / file I/O — those belong in entry scripts.
+4. **Test** in `tests/test_<mod>.py`: at least normal input + one edge case. Run `.venv/Scripts/python.exe -m pytest tests/test_<mod>.py -q`.
+5. **No LIBRARY.md** — discoverability is by Grep on the source. If a module is non-obvious, a comment at the top of the file is enough.
 
-- **Experiment with a conclusion lands in `EXPERIMENTS.md`** → update PAPER §5 (numbers in the table) and §6 (at least one Discussion sentence). Numbers in PAPER must be traceable back to an EXPERIMENTS entry.
-- **New paper / blog read, recorded in `RESEARCH.md` 读后感** → add a Related Work paragraph in PAPER §2, **and** add a numbered URL to PAPER References. Citations in the body without a References URL are not allowed.
-- **Architectural decision changes in `ARCHITECTURE.md`** → update PAPER §4 (Method).
-- **Phase transition in `ROADMAP.md`** → bump the version at the top of PAPER (Phase 0 end = v0.1, Phase 1 end = v0.2, …) and append a Changelog row.
-- **Failure / falsified hypothesis** in RESEARCH → goes into PAPER §6.2 "What didn't" — never silently dropped.
-
-Writing style for PAPER: academic voice ("we", not "Claude" / "the user"), no bare claims without a numbered citation, `[TBD]` / `[pending Phase N]` markers for sections not yet ready (preferred over fluff). When in doubt, ship a stub with TBD over polished prose with hand-waved numbers.
-
-### Library-first coding
-
-Reusable logic lives in the `arc_agent/` package and is indexed in `docs/LIBRARY.md`. **Before writing any function-shaped piece of code, follow this loop:**
-
-1. Search `docs/LIBRARY.md` for an existing function. If found → `from arc_agent.<mod> import <fn>` and use it. Done.
-2. If not found, decide which submodule it belongs to (see the "模块划分" table in `LIBRARY.md`). Anything that will plausibly be called twice goes in the library — not in a script.
-3. Implement it in `arc_agent/<mod>.py` with type annotations and a one-line docstring. Pure functions where possible; library code does no env/file I/O (those belong in entry scripts and `eval.py`).
-4. Add a test in `tests/test_<mod>.py` (normal input + at least one edge case) and verify it passes.
-5. Register it in `docs/LIBRARY.md` using the entry template at the top of that file.
-6. If the submodule didn't exist, also add a row to `docs/CODE_MAP.md`.
-
-Deprecation: don't delete; mark `Status: deprecated → <replacement>` in `LIBRARY.md` and keep the symbol for at least two weeks before removing.
-
-### Scientific iteration — Hypothesize, Execute, Iterate (HEI)
-
-The whole project — both the agent's runtime decision loop and our development process — runs on the same scientific-method loop. **There is no "let me try X and see what happens".**
-
-**Development-process HEI** (applies to every coding task and experiment):
-
-- **Hypothesize**: before running anything, commit to a *predicted* number or outcome. Examples: "LLMAgent will raise mean RHAE by ≥0.05 over Random on demo set"; "adding prompt cache will cut per-step token cost by ≥40%". Write the hypothesis into the task description, the EXPERIMENTS.md entry, or the RESEARCH.md attempt — whichever applies.
-- **Execute**: keep the run *cheap and bounded* so iteration is fast. Cap episodes, cap tokens, cap wall-clock. Smaller experiments that resolve a hypothesis beat one giant run that doesn't.
-- **Iterate**: every result, **success or failure**, must produce a documented next action. Branch the next step on the outcome:
-  - *Hypothesis confirmed* → what's the next, sharper hypothesis?
-  - *Hypothesis falsified* → what does that rule out, what's the new candidate?
-  - *Inconclusive* → what tighter experiment disambiguates?
-  Shelving a result without a next step is the failure mode to avoid. Every EXPERIMENTS.md entry has an explicit `Iteration trigger` field for this.
-
-**Agent-runtime HEI** (the inside-the-game decision loop): the agent itself is structured as Hypothesize → Execute → Iterate at every step — it maintains falsifiable rule hypotheses, picks actions for both goal progress and information gain, and updates beliefs after each observation. Details in `docs/ARCHITECTURE.md` "核心智能体循环".
-
-When the two loops are aligned, our experiments validate agent improvements that the agent itself uses the same logic for at runtime.
+Deprecation: don't delete; mark `Status: deprecated → <replacement>` in a docstring and keep the symbol for at least two weeks.
 
 ## Repository State
 
-Phase 1 in progress (per `docs/ROADMAP.md`). Phase 0 closed 2026-04-27 with end-to-end SDK working on `ls20` and a RandomAgent baseline on demo 25 (mean RHAE 0.000, pass rate 0%; see `docs/EXPERIMENTS.md`).
+Pivoted from BC training (Phase 2) to **RL with intrinsic F1 reward** on 2026-05-11 (see `docs/ARCHITECTURE_RL.md` §0 战略决策). Current step: `docs/ARCHITECTURE_RL.md` §9 Step 3 (`VLMAgent` 推理 loop) — Steps 1–2 (`grid_to_image`, `rewards.py` primitives) are merged.
 
 - `agent_starter.py` — single-game demo, imports `RandomAgent` + `play_one` from the library
-- `eval.py` — batch evaluator across N games × M episodes, writes `runs/<ts>_<tag>.jsonl`; `--agent {random,llm,llm-haiku}`, `--budget` USD hard stop
-- `arc_agent/` — library: `runner.py` (Agent Protocol + `play_one`), `observation.py` (grid → text/diff; `grid_to_image` planned Phase 2), `llm.py` (Anthropic wrapper with cumulative cost tracking), `agents/{random,llm}.py`
-- `tests/` — pytest suite (5 files, 36 passing tests as of 2026-04-28)
-- `vendor/ARC-AGI-3-Agents/` — read-only clone of the official scaffold for reference; do **not** edit
-- Not yet a git repo (no `.git/`), no linter, no CI
+- `eval.py` — batch evaluator across N game × M episode, writes `runs/<ts>_<tag>.jsonl`; `--agent {random,llm,llm-haiku}`, `--budget` USD hard stop
+- `arc_agent/` — library: `runner.py` (Agent Protocol + `play_one`), `observation.py` (grid → text/diff/image), `rewards.py` (verifier F1 primitives), `llm.py` (Anthropic wrapper), `agents/{random,llm}.py`
+- `tests/` — pytest suite (passing as of 2026-05-11; verifier + grid_to_image tests added on RL branch)
+- `vendor/ARC-AGI-3-Agents/` — read-only clone of the official scaffold; do **not** edit
 
-**Phase 2 backbone decision (2026-04-28)**: local model changed from Qwen3-0.6B (text-only) to **Qwen2.5-VL-3B-Instruct** (multimodal). Reason: the 64×64 grid encoded as hex text is a 1D sequence where vertically adjacent cells are ~64 tokens apart — a 0.6B text model cannot reliably infer 2D spatial correlations. Qwen2.5-VL-3B's ViT-style vision encoder processes the grid as a rendered 512×512 PNG with 2D patch attention, directly capturing spatial structure. The CNN encoder + slot encoder + fusion layer plan is dropped in favour of this single end-to-end model. See `docs/ARCHITECTURE.md` for full details.
+**Backbone**: Qwen2.5-VL-3B-Instruct (chosen 2026-04-28). 64×64 grid → 512×512 PNG via `arc_agent.observation.grid_to_image`, fed to the ViT vision encoder. The text-only Qwen3-0.6B route was dropped because hex-encoded grids miss 2D spatial structure (vertically adjacent cells are ~64 tokens apart in a 1D sequence).
 
-For the full file-by-file map see `docs/CODE_MAP.md`; for the seven-doc index see `docs/README.md`.
-
-**Gotchas** (full list in `docs/RESEARCH.md` §4 "SDK 已知坑"):
+## Gotchas
 
 - **`arc_agi/base.py` auto-loads `.env.example` at import time**, so `os.getenv("ARC_API_KEY")` returns the placeholder `"your_arc_api_key_here"` if the user hasn't created a real `.env`. All `if not key:` checks are bypassed and the SDK then 401s. Always check `key.startswith("your_")` too.
 - **Anonymous mode is rejected** by `https://three.arcprize.org` (401 on `/api/games`). A real `ARC_API_KEY` is required from https://arcprize.org/api-keys, placed in `.env` (NOT `.env.example`).
-- **`GameAction` has 8 enum members** (`RESET + ACTION1..ACTION7`), but only ACTION1–ACTION7 are user-callable game actions. `RESET` is the state-transition action used when `state ∈ {NOT_PLAYED, GAME_OVER}`. Only `ACTION6` is `is_complex()` (needs x, y ∈ [0,63]). In practice the runner passes coordinates via the action's pydantic `action_data` model — `env.step(action, data=action.action_data.model_dump())` — rather than constructing a raw `{"x":…, "y":…}` dict.
-- **`FrameDataRaw.win_levels` is the total level count for the game, not the wins.** Use `levels_completed` for progress.
-- **Windows console (cp1252) cannot encode Unicode arrows** like `→`. Use ASCII (`->`) in any print statement that may run on Windows.
+- **`GameAction` has 8 enum members** (`RESET + ACTION1..ACTION7`); only ACTION1–ACTION7 are user-callable. `RESET` is the state-transition action when `state ∈ {NOT_PLAYED, GAME_OVER}`. Only `ACTION6` is `is_complex()` (needs x, y ∈ [0,63]). The runner passes coordinates via the action's pydantic data model: `env.step(action, data=action.action_data.model_dump())`.
+- **`FrameDataRaw.win_levels` is the total level count, not the wins.** Use `levels_completed` for progress.
+- **Windows console (cp1252) cannot encode Unicode arrows** like `→`. Use ASCII (`->`) in any print that may run on Windows.
 - **Default `GAME_ID = "ls20"`**, version 9607627b at time of writing (SDK auto-downloads to `environment_files/ls20/9607627b/ls20.py` — game logic is local Python, not a remote service).
 
 ## Environment
 
-`.venv/` was rebuilt with **Python 3.12** on 2026-04-27 (the prior 3.11 venv could not install `arcengine`, which requires ≥3.12). The interpreter at `C:\Users\sshuser\AppData\Local\Programs\Python\Python312\python.exe` was used as the base.
+`.venv/` is Python 3.12 (the prior 3.11 venv could not install `arcengine`, which requires ≥3.12). Base interpreter: `C:\Users\sshuser\AppData\Local\Programs\Python\Python312\python.exe`.
 
-A real `ARC_API_KEY` from https://arcprize.org/api-keys must be in `.env` at the repo root (not `.env.example` — see Gotchas above). `requirements.txt` pins both `arc-agi>=0.9.8` and `arcengine>=0.9.3`.
-
-No linter/CI yet. `pytest` is wired up — run the suite directly with the venv interpreter (see Commands below).
+A real `ARC_API_KEY` from https://arcprize.org/api-keys must be in `.env` at the repo root (not `.env.example` — see Gotchas). `requirements.txt` pins `arc-agi>=0.9.8` and `arcengine>=0.9.3`. RL training deps (`transformers`, `peft`, `bitsandbytes`, `trl`, `accelerate`, `qwen-vl-utils`) are intentionally **not** in `requirements.txt` to avoid Kaggle conflicts — install separately when running training.
 
 ## Commands
 
@@ -121,27 +67,39 @@ No linter/CI yet. `pytest` is wired up — run the suite directly with the venv 
 
 # Tests (full suite, then a single test by node id)
 .venv/Scripts/python.exe -m pytest tests/ -q
-.venv/Scripts/python.exe -m pytest tests/test_runner.py::test_play_one_stops_on_win -q
-
-# Recreate the venv from scratch (rare)
-.venv/Scripts/python.exe -m pip install -r requirements.txt
+.venv/Scripts/python.exe -m pytest tests/test_rewards.py -q
 ```
 
 `eval.py` flags: `--agent {random,llm,llm-haiku}`, `--games <comma-list-or-prefix>` (empty = all available demo games), `--episodes N`, `--max-actions N` (default 80), `--tag <label>`, `--output <path>`. It writes one jsonl row per (game, episode) plus a final `__summary__` row to `runs/<ts>_<tag>.jsonl`.
+
+RL-line entry points (planned per `docs/ARCHITECTURE_RL.md` §9):
+
+```bash
+# Step 6 — Baseline (Go/no-go gate)
+.venv/Scripts/python.exe vlm_test/scripts/run_baseline.py --output vlm_test/outputs/baseline_<ts>
+
+# Step 7 — GRPO training
+.venv/Scripts/python.exe vlm_test/scripts/run_grpo.py --output vlm_test/outputs/grpo_<ts>
+
+# Step 8 — Validation (post-training)
+.venv/Scripts/python.exe vlm_test/scripts/run_validation.py --checkpoint <path> --output vlm_test/outputs/validation_<ts>
+```
 
 ## Core Concepts
 
 **Scoring (RHAE)**: `S = min(1.0, h/a)²` where `h` = second-best human action count, `a` = agent actions. Quadratic penalty — being 2× slower yields 0.25, not 0.5. Later levels are weighted more heavily (`w_l = l`). Hard cutoff at 5× human action budget.
 
-**Observation**: 64×64 grid, 16 possible colors per cell. May be a sequence of frames (for animations).
+**Observation**: 64×64 grid, 16 possible colors per cell. May be a sequence of frames (animations).
 
-**Action space** (corrected 2026-04-27 — see `docs/RESEARCH.md` attempt #2): 7 actions in `GameAction`, imported `from arcengine import GameAction`:
+**Action space**: 7 actions in `GameAction`, imported `from arcengine import GameAction`:
 - `ACTION1`=Up, `ACTION2`=Down, `ACTION3`=Left, `ACTION4`=Right (4 directional)
 - `ACTION5`=Primary (interact / select / rotate / etc — game-specific)
 - `ACTION6`=Coordinate (takes x, y ∈ [0, 63] via `env.step(action, data={"x":..., "y":...})`; check with `action.is_complex()`)
 - `ACTION7`=Undo
 
 **Datasets**: 25 public demo environments (easier), 55 semi-private (API testing), 55 fully private (competition eval). Access via `arc.make(game_id)`.
+
+**Intrinsic F1 reward** (RL-line core idea, `docs/ARCHITECTURE_RL.md` §3): each step the agent predicts which cells will change. We compare the predicted set to the real change set extracted from `(s_t, s_{t+1})` and score with F1. That F1 becomes a dense reward signal — every step gives feedback, no waiting for WIN. Implemented in `arc_agent/rewards.py`.
 
 ## Agent Interface
 

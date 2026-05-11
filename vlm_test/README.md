@@ -195,8 +195,6 @@ def compute_reward(step):
 
 ## 8. 重要参考
 
-- 设计原理:[`../docs/ARCHITECTURE_RL.md`](../docs/ARCHITECTURE_RL.md)(本文档的"父文档")
-- 模块职责:[`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)
-- 路线变更说明:[`../docs/ROADMAP.md`](../docs/ROADMAP.md) 头部"2026-05-11 战略转向"
-- 函数库索引:[`../docs/LIBRARY.md`](../docs/LIBRARY.md)
-- 失败方案与已知坑:[`../docs/RESEARCH.md`](../docs/RESEARCH.md)
+- **唯一活跃文档**:[`../docs/ARCHITECTURE_RL.md`](../docs/ARCHITECTURE_RL.md) — 设计原理 / Hypothesis / 5-5-5 切分 / §9 文件级实施步骤
+- 历史文档(已归档,只读):`../archive/docs_2026-05-11/`(原七件套:ARCHITECTURE / LIBRARY / PAPER / ROADMAP / RESEARCH / EXPERIMENTS / CODE_MAP / README)
+- 项目级规则:`../CLAUDE.md`(库优先 / 环境 / 命令 / 关键概念)

@@ -443,15 +443,116 @@ A: 实施 §6 第 5 步前先 `arc.list_games()` 拉取 demo 25 完整列表,然
 
 ---
 
-## 第 8 节:与其它文档的关系
+## 第 8 节:文档现状(2026-05-11 重组)
 
-| 文档 | 关系 |
-|---|---|
-| `ARCHITECTURE.md` | 父文档(模块职责)。本文是"训练+推理具体流程"补充 |
-| `ROADMAP.md` | 本文使 Phase 2 BC 子计划失效;Phase 4 RL 提前到当前 |
-| `RESEARCH.md` | 本路线立项条目:方案 #5("Qwen 自验证 + intrinsic F1 reward") |
-| `EXPERIMENTS.md` | Baseline / 训练 / Validation 三个阶段各有预注册条目 |
-| `PAPER.md` | §4 Method 大改;§5 Experiments 表新增 baseline / trained 两行 |
-| `LIBRARY.md` | 新增 `verify_prediction_f1`, `diff_grid`, `update_rule_table`, GIF 工具等 |
+为了保持简单,旧的七件套(ARCHITECTURE / LIBRARY / PAPER / ROADMAP / RESEARCH / EXPERIMENTS / CODE_MAP / README)已**整体归档**到 `archive/docs_2026-05-11/`,**只读保留作历史**。
 
-实施时按 CLAUDE.md 工作流,每完成一步同步更新对应 doc。
+当前 `docs/` 目录**只有本文件**。新代码、新决策、新实验的所有正式文档需求,统一写在本文件内或对应的代码注释 / 测试断言里。`vlm_test/README.md` 是本文件的实施侧 README(命令、文件夹布局、状态表)。
+
+CLAUDE.md 的"库优先"规则仍然强制:任何会被复用的函数必须进 `arc_agent/`,在源码注释里写清签名和用途;不再要求维护单独的 LIBRARY.md 索引。
+
+---
+
+## 第 9 节:实施步骤(可执行清单)
+
+每步给出:**文件路径 / 关键签名 / 测试 / Acceptance criteria / 当前状态**。完成一步 → 把状态从 ⬜ 改成 ✅ 即可,无需另外更新文档。
+
+库优先约束(每一步都适用):任何要复用的函数必须放进 `arc_agent/` 包,**不允许**写在 script 里;脚本只负责 I/O 编排。
+
+### Step 1 — `grid_to_image()`  ✅(已合入 main)
+
+- **文件**:`arc_agent/observation.py`
+- **签名**:`def grid_to_image(grid: np.ndarray, scale: int = 8) -> PIL.Image.Image`
+- **行为**:64×64 int 数组(0..15)→ 512×512 RGB,使用 ARC 标准 16 色调色板
+- **测试**:`tests/test_observation.py::test_grid_to_image_*`(形状、调色板、scale 参数)
+- **Acceptance**:测试全过 + 在 baseline 脚本中调用不报错
+
+### Step 2 — `rewards.py` 三件套  ✅(已合入 main)
+
+- **文件**:`arc_agent/rewards.py`
+- **签名**:
+  - `changes_to_set(changes: Any) -> ChangeSet`(容错解析 Qwen JSON)
+  - `real_changes(s_t, s_tp1) -> ChangeSet`(从两帧计算真实变化)
+  - `verify_prediction_f1(predicted, real) -> float`(F1 ∈ [0,1],含空集边界)
+- **测试**:`tests/test_rewards.py`(全等、全错、部分重叠、空集、shape mismatch)
+- **Acceptance**:`pytest tests/test_rewards.py -q` 全过
+
+### Step 3 — `VLMAgent` 推理 loop  ⬜
+
+- **文件**:`arc_agent/agents/vlm.py`(新建);依赖已存在的 `arc_agent/vlm_backbone.py` 抽象 — 若该文件不存在则同步建立
+- **关键签名**:
+  - `class VLMAgent: def __init__(self, *, model_path: str | None = None, max_rules: int = 20); def choose(self, latest, history) -> GameAction; def reset(self) -> None`
+  - 内部:`_build_prompt(...)`(§1 6 段)、`_parse_response(text)→dict`(JSON 容错)、`_update_rule_table(f1, new_rule)`(§3.2)
+  - backbone:`arc_agent/vlm_backbone.py::load_model(quantize: str | None = "4bit") -> (model, processor)`、`generate(model, processor, image, prompt, *, system) -> str`
+- **测试**:`tests/test_agents_vlm.py`
+  - 必测(无 GPU):`_build_prompt` 6 段顺序齐全、`_parse_response` 在合法/非法/部分缺失 JSON 上不抛异常、`_update_rule_table` 上限 20 条 + evict 逻辑
+  - 可选(GPU,`@pytest.mark.gpu`):一次 `choose` 端到端
+- **Acceptance**:无 GPU 测试全过 + 在 baseline 脚本里跑 1 局不崩
+
+### Step 4 — GIF 合成工具  ⬜
+
+- **文件**:`arc_agent/viz.py`(库)+ `vlm_test/scripts/make_gif.py`(脚本入口)
+- **签名**:
+  - `compose_step_image(grid_now: np.ndarray, predicted_diff: ChangeSet, grid_next: np.ndarray, json_text: str, *, header: str) -> PIL.Image.Image`(§5.2 四宫格布局)
+  - `write_gif(frames: list[PIL.Image.Image], out_path: str | Path, *, fps: int = 2) -> None`
+- **测试**:`tests/test_viz.py`
+  - `compose_step_image` 输出非空 + 尺寸正确(宽 ≥ 2× 单图,高同理)
+  - `write_gif` 在 tmp_path 写出文件,大小 > 0
+- **Acceptance**:测试过 + baseline 跑完后 `vlm_test/outputs/baseline_<ts>/<game_id>/play.gif` 能在浏览器播放
+
+### Step 5 — `scripts/run_baseline.py`  ⬜
+
+- **文件**:`vlm_test/scripts/run_baseline.py`
+- **职责**(脚本只编排,逻辑全在库里):
+  1. `arc.list_games()` → 按字母序固定切 G_base / G_train / G_val(可复现);切分逻辑放进 `arc_agent/eval_split.py::demo_555_split() -> dict[str, list[str]]`
+  2. 对 G_base 5 个游戏各跑 1 episode,用 `arc_agent.runner.play_one` + `VLMAgent`
+  3. 每步保存 `step_<n>.png`(`viz.compose_step_image`)+ JSONL 一行(prompt / response / f1 / parse_ok)
+  4. 整局结束 `viz.write_gif(...)`,生成 `play.gif`
+  5. 全部完成写 `summary.json`:每个游戏的 mean F1 / parse_rate / RHAE
+- **CLI**:`--games <ids> --episodes 1 --output vlm_test/outputs/baseline_<ts>`(--games 默认从 5-5-5 切分取 G_base)
+- **Acceptance**:run 一次后产物齐全(每游戏一个文件夹,含 PNG、GIF、trace.jsonl、summary.json)
+
+### Step 6 — 跑 Baseline + 验证 Hypothesis  ⬜  ★ Go/no-go gate
+
+- **预注册 Hypothesis**(运行前**必须**在 commit message 或 summary.json 头部写下):
+  - Mean F1 在 G_base ≥ 0.30
+  - Mean RHAE 在 G_base ≤ 0.05
+  - JSON parse 成功率 ≥ 0.70
+- **执行**:`python vlm_test/scripts/run_baseline.py`
+- **Iteration trigger**(根据 summary.json 里的实测数字分支):
+  - F1 ≥ 0.3 且 parse ≥ 0.7 → 进入 Step 7(GRPO 训练)
+  - F1 < 0.1 → 升级双图输入(上帧 + 当前帧);仍不行 → 回退 BC 路线
+  - parse < 0.5 → 加 1–2 个 in-context 示例,重跑 baseline
+  - 0.1 ≤ F1 < 0.3 → 消融实验(单图 vs 双图;有 entity 段 vs 无)
+- **Acceptance**:summary.json + 触发的分支结论写在本文件 §9 末尾的"Run Log"小节(append-only)
+
+### Step 7 — `scripts/run_grpo.py`  ⬜
+
+- **文件**:`vlm_test/scripts/run_grpo.py`(脚本)+ `arc_agent/train_grpo.py`(库,封装 trl.GRPOTrainer 的 setup)
+- **签名**:
+  - `arc_agent/train_grpo.py::build_trainer(model, processor, reward_fn: Callable, train_games: list[str], **grpo_kwargs) -> GRPOTrainer`
+  - `arc_agent/train_grpo.py::reward_fn(rollout_step) -> float`(§3 公式:1.0 win + 0.2*F1 − 0.5 parse_fail − 0.3 illegal_action)
+- **CLI**:`--games <5 train ids> --val-games <5 val ids> --steps N --val-every 50 --output vlm_test/outputs/grpo_<ts>`
+- **测试**:`tests/test_train_grpo.py::test_reward_fn_*`(每条惩罚/奖励路径单独覆盖)
+- **Acceptance**:reward_fn 单测过 + 在 G_train 上能跑出至少 50 个 GRPO step 不 OOM(显存日志记 peak ≤ 18GB)
+
+### Step 8 — GRPO 训练 + Validation  ⬜
+
+- **预注册 Hypothesis**:G_val mean RHAE 训后比训前提升 ≥ 0.05;G_train 提升 ≥ 0.10(sanity check)
+- **训练**:`python vlm_test/scripts/run_grpo.py ...`,wall-clock ≤ 4 GPU-days,early stop 看 G_val mean RHAE 连续 3 次 val 不涨
+- **Validation**:`vlm_test/scripts/run_validation.py --checkpoint <path> --games <G_val>`(复用 Step 5 的脚本骨架,换 checkpoint)
+- **关键判断**:
+  - `F1_v_post > F1_v_pre` → 训出真本事
+  - `F1_t_post 涨 / F1_v_post ≈ pre` → 过拟合,记录失败模式
+  - 都没涨 → 路线问题,回头诊断 prompt / reward / 数据
+- **Acceptance**:训前训后两份 summary.json + 一句结论 append 到本文件 §9 末尾 Run Log
+
+---
+
+### Run Log(append-only)
+
+每次跑完 Step 6 / Step 8 在这里追加一行:`<日期> | <step#> | <核心数字> | <触发分支> | <下一步>`。
+
+| 日期 | Step | 关键数字 | 触发分支 | 下一步 |
+|---|---|---|---|---|
+| _(待填)_ | | | | |
