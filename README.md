@@ -147,11 +147,11 @@ Step 6 的预注册 hypothesis:F1 ≥ 0.30、parse 成功率 ≥ 0.70、RHAE ≤
 > ② 每步 agent 留下的 JSONL 行长什么样(字段名 + 类型) → 写在写入函数的 docstring 里,所有读写都按这个走。
 > ③ 每次 run 跑完的 summary.json 长什么样 → 同上。
 >
-> **进度**:2 / 3(代码全在,只差跑一次 freeze_splits 把 JSON 写下来 commit)。
+> **进度**:3 / 3 完成 ✅(2026-05-11 跑了 freeze_splits,SDK 返回 25 demo 游戏,5-5-5 已冻结 commit)。
 
 | 状态 | 任务 | 路径 / 备注 | §9 Step |
 |---|---|---|---|
-| 🟡 | **划分冻结**:函数已实现 + 单测过;**还需跑一次** `scripts/freeze_splits.py`(需 ARC_API_KEY)产出 `data/splits/demo_555.json` 并 commit。**不允许重新随机或临时换游戏**(否则训前训后没法对比) | `arc_agent/eval_split.py::demo_555_split()` + `scripts/freeze_splits.py` → `data/splits/demo_555.json` | 5(从 5 拆出) |
+| ✅ | **划分冻结**:`data/splits/demo_555.json` 已 commit(2026-05-11)。**不允许重新随机或临时换游戏**(否则训前训后没法对比) | `arc_agent/eval_split.py::demo_555_split()` + `scripts/freeze_splits.py` → `data/splits/demo_555.json` | 5(从 5 拆出) |
 | ✅ | **trace schema**:`serialize_step()` 实现 + 6 个测试覆盖(全字段、parse 失败 shape、JSON round-trip、None 透传、类型强制)。每步一行 JSONL,12 字段固定。所有写入用同一个 helper,所有分析脚本按这个字段名读。 | `arc_agent/observation.py::serialize_step()` | 5(子任务) |
 | ✅ | **summary schema**:`write_summary()` 实现 + 3 个测试覆盖(必填字段全在、缺字段 raise、optional 透传)。每个 run 一份 `summary.json`,8 个必填字段固定,多次 run 直接对比 `summary['mean_f1']` 不会因字段名打架而崩。 | `arc_agent/eval_split.py::write_summary()` | 5(子任务) |
 
@@ -202,7 +202,7 @@ outputs/
 ### C. Baseline 评估 ★ Go/no-go gate
 
 > **出口**:在 G_base 5 个游戏上跑出 mean F1、parse 成功率、mean RHAE 三个数字,根据预注册 hypothesis 决定下一步走哪条分支(D 训练 / 改 prompt / 双图 / 回退 BC)。
-> **进度**:0 / 2 完成。**依赖 Stage 0 freeze_splits 跑过。**(A.viz ✅、B VLMAgent ✅)
+> **进度**:0 / 2 完成。**前置全部就绪**(Stage 0 splits ✅、A.viz ✅、B VLMAgent ✅)— 下一步直接动 `run_baseline.py`。
 
 | 状态 | 任务 | 路径 | §9 Step |
 |---|---|---|---|
