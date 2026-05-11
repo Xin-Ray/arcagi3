@@ -325,3 +325,29 @@ def test_choose_without_backbone_raises() -> None:
     agent = VLMAgent()
     with pytest.raises(RuntimeError, match="no backbone"):
         agent.choose(_frame(), history=[])
+
+
+# ── trace surface for baseline runner ─────────────────────────────────────
+
+
+def test_choose_exposes_prompt_and_response_for_trace() -> None:
+    reply = '{"chosen_action": "ACTION3", "predicted_diff": []}'
+    agent = VLMAgent(backbone=_FakeBackbone([reply]))
+    agent.choose(_frame(available=[1, 2, 3]), history=[])
+    assert agent._state.last_response_raw == reply
+    assert "[SYSTEM]" in agent._state.last_prompt
+    assert "【段 5: 输出格式】" in agent._state.last_prompt
+    assert agent._state.last_parse_ok is True
+
+
+def test_choose_marks_parse_ok_false_on_unparseable() -> None:
+    agent = VLMAgent(backbone=_FakeBackbone(["garbage"]), seed=0)
+    agent.choose(_frame(available=[1, 2, 3]), history=[])
+    assert agent._state.last_parse_ok is False
+
+
+def test_choose_clears_response_on_backbone_exception() -> None:
+    agent = VLMAgent(backbone=_BoomBackbone(), seed=0)
+    agent.choose(_frame(available=[1, 2, 3]), history=[])
+    assert agent._state.last_response_raw == ""
+    assert agent._state.last_parse_ok is False

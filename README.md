@@ -92,12 +92,13 @@ py -3.12 -m venv .venv
 | ✅ 库 | `arc_agent/agents/vlm.py` | `VLMAgent` — 6 段 prompt + JSON 解析 + rule_table(§9 Step 3) |
 | ✅ 库 | `arc_agent/vlm_backbone.py` | `HFBackbone.load` / `load_model` / `generate` — Qwen2.5-VL 加载,惰性导入 |
 | ✅ 库 | `arc_agent/viz.py` | `compose_step_image`(4 宫格合成图)+ `write_gif` |
+| ✅ 库 | `arc_agent/baseline.py` | `play_one_with_trace`(1 局 → step PNG + trace.jsonl + play.gif + 指标) |
 | ⬜ 待建 | `arc_agent/train_grpo.py` | GRPO trainer 封装 — Step 7 |
 | ✅ 脚本 | `scripts/agent_starter.py` | 单局 RandomAgent demo |
 | ✅ 脚本 | `scripts/eval.py` | 批量评估(`--agent {random,llm,llm-haiku}`) |
 | ✅ 脚本 | `scripts/freeze_splits.py` | 一次性冻结 demo-25 5-5-5 划分到 `data/splits/demo_555.json` |
 | ✅ 脚本 | `scripts/make_gif.py` | 把一个 run 文件夹的 `step_*.png` 合成 `play.gif` |
-| ⬜ 待建 | `scripts/run_baseline.py` | RL Step 5–6:zero-shot Qwen 在 G_base 上跑 + GIF |
+| ✅ 脚本 | `scripts/run_baseline.py` | RL Step 5:zero-shot Qwen 在 G_base 上跑 + GIF;`--dry-run` 走 RandomAgent 烟雾测过 |
 | ⬜ 待建 | `scripts/run_grpo.py` | RL Step 7:GRPO 训练在 G_train 上 |
 | ⬜ 待建 | `scripts/run_validation.py` | RL Step 8:训后在 G_val 上对比 |
 | ✅ 文档 | `README.md` | 本文 |
@@ -111,7 +112,7 @@ py -3.12 -m venv .venv
 .
 ├── arc_agent/        库(除模型加载外不做 I/O)
 ├── scripts/          入口脚本(只编排,不放可复用逻辑)
-├── tests/            pytest(128 个全过)
+├── tests/            pytest(136 个全过)
 ├── data/             inputs/(测试 PNG)、train/(silver-label JSONL)
 ├── outputs/          runs/、checkpoints/、baseline_<ts>/ 等(gitignore)
 ├── docs/             只有 ARCHITECTURE_RL.md
@@ -206,8 +207,8 @@ outputs/
 
 | 状态 | 任务 | 路径 | §9 Step |
 |---|---|---|---|
-| ⬜ | baseline 脚本(5-5-5 切分 + 每步合成图 + summary.json) | `scripts/run_baseline.py` | 5 |
-| ⬜ | **跑 baseline + 写结论到 §9 Run Log** | — | 6 |
+| ✅ | baseline 脚本(5-5-5 切分 + 每步合成图 + summary.json)+ `play_one_with_trace` 库函数 + 5 个测试 | `scripts/run_baseline.py` + `arc_agent/baseline.py` | 5 |
+| ⬜ | **跑 baseline + 写结论到 §9 Run Log**(需要 GPU + 训练栈:`pip install torch transformers bitsandbytes peft trl accelerate qwen-vl-utils`) | — | 6 |
 
 **预注册 Hypothesis**(运行前必须 commit):F1 ≥ 0.30、parse ≥ 0.70、RHAE ≤ 0.05。
 **分支决策**:F1 ≥ 0.3 + parse ≥ 0.7 → 进 D / F1 < 0.1 → 双图 → 仍不行回退 BC / parse < 0.5 → 改 prompt 重跑 / 中间态 → 消融。

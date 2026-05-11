@@ -94,6 +94,10 @@ class _AgentState:
     last_f1: Optional[float] = None
     last_real_diff: Optional[ChangeSet] = None
     last_reflection: str = ""
+    # Raw I/O of the most recent backbone call — surfaced for trace logging.
+    last_prompt: str = ""
+    last_response_raw: str = ""
+    last_parse_ok: bool = False
     action_history: list[str] = field(default_factory=list)
     rule_table: list[dict] = field(default_factory=list)
     step_count: int = 0
@@ -173,6 +177,7 @@ class VLMAgent:
         # --- Step B: build prompt + image, call backbone ---
         image = grid_to_image(s_t, scale=8)
         system, user = self._build_prompt(latest)
+        self._state.last_prompt = system + "\n\n" + user
 
         backbone = self._ensure_backbone()
         try:
@@ -181,8 +186,11 @@ class VLMAgent:
             logger.warning("backbone.generate failed (%s) — fallback random", e)
             self._state.parse_failures += 1
             self._state.last_predicted_diff = None
+            self._state.last_response_raw = ""
+            self._state.last_parse_ok = False
             return self._fallback_random(latest)
 
+        self._state.last_response_raw = response_raw
         parsed = self._parse_response(response_raw)
 
         # --- Step C: rule-table update using parsed new_rule + last F1 ---
@@ -199,6 +207,7 @@ class VLMAgent:
             )
             self._state.last_predicted_diff = None
             self._state.last_chosen_action = None
+            self._state.last_parse_ok = False
             self._state.step_count += 1
             return self._fallback_random(latest)
 
@@ -206,6 +215,7 @@ class VLMAgent:
         self._state.last_grid = s_t.copy()
         self._state.last_predicted_diff = changes_to_set(parsed.get("predicted_diff"))
         self._state.last_chosen_action = action.name
+        self._state.last_parse_ok = True
         self._state.last_reflection = str(parsed.get("reflection") or "")
         self._state.action_history.append(action.name)
         if len(self._state.action_history) > self.HISTORY_LIMIT:

@@ -500,7 +500,7 @@ CLAUDE.md 的"库优先"规则仍然强制:任何会被复用的函数必须进 
   - `write_gif` 在 tmp_path 写出文件,大小 > 0
 - **Acceptance**:测试过 + baseline 跑完后 `outputs/baseline_<ts>/<game_id>/play.gif` 能在浏览器播放
 
-### Step 5 — `scripts/run_baseline.py`  ⬜
+### Step 5 — `scripts/run_baseline.py`  ✅(2026-05-11 合入,--dry-run 烟雾验证过)
 
 - **文件**:`scripts/run_baseline.py`
 - **职责**(脚本只编排,逻辑全在库里):
