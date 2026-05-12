@@ -99,6 +99,7 @@ py -3.12 -m venv .venv
 | ✅ 脚本 | `scripts/freeze_splits.py` | 一次性冻结 demo-25 5-5-5 划分到 `data/splits/demo_555.json` |
 | ✅ 脚本 | `scripts/make_gif.py` | 把一个 run 文件夹的 `step_*.png` 合成 `play.gif` |
 | ✅ 脚本 | `scripts/compare_summaries.py` | 两份 summary.json 的差异表(baseline vs validation 对比用) |
+| ✅ 脚本 | `scripts/analyze_failures.py` | 把一个 run 的 trace.jsonl 按失败模式分桶(empty/missing/illegal/truncated) |
 | ✅ 脚本 | `scripts/run_baseline.py` | RL Step 5:zero-shot Qwen 在 G_base 上跑 + GIF;`--dry-run` 走 RandomAgent 烟雾测过 |
 | 🟡 脚本 | `scripts/run_grpo.py` | RL Step 7:骨架 + `--dry-run` 已跑;rollout adapter 待 Step 6 通过后接入 |
 | 🟡 脚本 | `scripts/run_validation.py` | RL Step 8:加载 LoRA + 跑 G_val + 可选 `--compare-to baseline summary`;dry-run 过 |
