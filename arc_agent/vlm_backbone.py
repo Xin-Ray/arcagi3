@@ -109,7 +109,7 @@ def generate(
     *,
     system: str = "",
     max_new_tokens: int = 512,
-    temperature: float = 0.7,
+    temperature: float = 0.0,
 ) -> str:
     """Run one Qwen2.5-VL generation and return decoded text.
 
@@ -171,8 +171,21 @@ class HFBackbone:
         self.model = model
         self.processor = processor
 
-    def generate(self, image: Any, prompt: str, *, system: str = "") -> str:
-        return generate(self.model, self.processor, image, prompt, system=system)
+    def generate(
+        self,
+        image: Any,
+        prompt: str,
+        *,
+        system: str = "",
+        max_new_tokens: int = 512,
+        temperature: float = 0.0,
+    ) -> str:
+        return generate(
+            self.model, self.processor, image, prompt,
+            system=system,
+            max_new_tokens=max_new_tokens,
+            temperature=temperature,
+        )
 
     @classmethod
     def load(

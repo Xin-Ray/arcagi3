@@ -91,7 +91,7 @@ def _load_g_base(override: str) -> list[str]:
     return json.loads(SPLIT_PATH.read_text(encoding="utf-8"))["g_base"]
 
 
-def _make_agent(dry_run: bool, seed: int):
+def _make_agent(dry_run: bool, seed: int, max_new_tokens: int, temperature: float):
     """Choose the agent. --dry-run swaps in RandomAgent so we don't load Qwen."""
     if dry_run:
         from arc_agent.agents.random import RandomAgent
@@ -101,7 +101,12 @@ def _make_agent(dry_run: bool, seed: int):
     from arc_agent.vlm_backbone import HFBackbone
 
     backbone = HFBackbone.load()  # Qwen2.5-VL-3B-Instruct, 4-bit
-    return VLMAgent(backbone=backbone, seed=seed)
+    return VLMAgent(
+        backbone=backbone,
+        seed=seed,
+        max_new_tokens=max_new_tokens,
+        temperature=temperature,
+    )
 
 
 def _resolve_full_game_ids(
@@ -156,6 +161,15 @@ def main() -> None:
         "--no-images", action="store_true",
         help="Skip per-step PNG and play.gif (trace.jsonl still written).",
     )
+    parser.add_argument(
+        "--max-new-tokens", type=int, default=768,
+        help="VLM generate budget per step. 768 covers entities+predicted_diff "
+             "with margin; lower=faster but risks truncating JSON.",
+    )
+    parser.add_argument(
+        "--temperature", type=float, default=0.0,
+        help="VLM sampling temperature. 0.0 = greedy (faster, deterministic).",
+    )
     args = parser.parse_args()
 
     _check_key()
@@ -170,7 +184,9 @@ def main() -> None:
     games, meta_by_id = _resolve_full_game_ids(arc, requested)
     print(f"Playing on {len(games)} game(s): {games}")
 
-    agent = _make_agent(args.dry_run, args.seed)
+    agent = _make_agent(
+        args.dry_run, args.seed, args.max_new_tokens, args.temperature,
+    )
 
     card_id = arc.open_scorecard(tags=[args.tag, "g_base"])
     print(f"Scorecard {card_id} opened.")

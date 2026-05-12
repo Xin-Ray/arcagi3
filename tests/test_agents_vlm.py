@@ -29,15 +29,15 @@ class _FakeBackbone:
         self._replies = list(replies)
         self.calls: list[tuple] = []  # (image, prompt, system)
 
-    def generate(self, image, prompt: str, *, system: str = "") -> str:
-        self.calls.append((image, prompt, system))
+    def generate(self, image, prompt: str, *, system: str = "", **kw) -> str:
+        self.calls.append((image, prompt, system, kw))
         if not self._replies:
             return '{"chosen_action": "ACTION1"}'
         return self._replies.pop(0)
 
 
 class _BoomBackbone:
-    def generate(self, image, prompt: str, *, system: str = "") -> str:
+    def generate(self, image, prompt: str, *, system: str = "", **kw) -> str:
         raise RuntimeError("simulated GPU failure")
 
 
@@ -400,6 +400,16 @@ def test_choose_action6_string_coords() -> None:
     assert action is GameAction.ACTION6
     d = action.action_data.model_dump()
     assert d["x"] == 15 and d["y"] == 42
+
+
+def test_choose_forwards_max_new_tokens_and_temperature() -> None:
+    """Regression: these used to be stored on the agent but never plumbed."""
+    fake = _FakeBackbone(['{"chosen_action": "ACTION1"}'])
+    agent = VLMAgent(backbone=fake, max_new_tokens=2048, temperature=0.3)
+    agent.choose(_frame(available=[1]), history=[])
+    _, _, _, kw = fake.calls[0]
+    assert kw["max_new_tokens"] == 2048
+    assert kw["temperature"] == 0.3
 
 
 def test_choose_action6_top_level_coords() -> None:

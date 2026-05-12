@@ -24,8 +24,8 @@ class _FakeBackbone:
         self._replies = list(replies)
         self.calls: list[tuple] = []
 
-    def generate(self, image, prompt: str, *, system: str = "") -> str:
-        self.calls.append((image, prompt, system))
+    def generate(self, image, prompt: str, *, system: str = "", **kw) -> str:
+        self.calls.append((image, prompt, system, kw))
         if not self._replies:
             return '{"chosen_action": "ACTION1", "predicted_diff": []}'
         return self._replies.pop(0)

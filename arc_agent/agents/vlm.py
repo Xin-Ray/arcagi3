@@ -120,7 +120,8 @@ class VLMAgent:
         model_path: Optional[str] = None,
         max_rules: int = 20,
         seed: Optional[int] = None,
-        max_new_tokens: int = 512,
+        max_new_tokens: int = 768,
+        temperature: float = 0.0,
     ) -> None:
         """Construct a VLM agent.
 
@@ -133,12 +134,19 @@ class VLMAgent:
             max_rules: rule_table cap; lowest-confidence entries are evicted
                 when over.
             seed: rng seed for the fallback-random branch.
-            max_new_tokens: forwarded to backbone.generate when supported.
+            max_new_tokens: forwarded to backbone.generate. Default 768
+                covers entities (5-8 items) + predicted_diff (up to ~20
+                cells) + reflection + new_rule with margin; truncation
+                hurts parse_rate so don't cut this lower without testing.
+            temperature: sampling temperature. 0.0 = greedy decode (faster
+                and deterministic; recommended for eval). Bump >0 for
+                training-time rollout diversity.
         """
         self._backbone = backbone
         self._model_path = model_path
         self._max_rules = max_rules
         self._max_new_tokens = max_new_tokens
+        self._temperature = temperature
         self._rng = random.Random(seed)
         self._state = _AgentState()
 
@@ -181,7 +189,12 @@ class VLMAgent:
 
         backbone = self._ensure_backbone()
         try:
-            response_raw = backbone.generate(image, user, system=system)
+            response_raw = backbone.generate(
+                image, user,
+                system=system,
+                max_new_tokens=self._max_new_tokens,
+                temperature=self._temperature,
+            )
         except Exception as e:
             logger.warning("backbone.generate failed (%s) — fallback random", e)
             self._state.parse_failures += 1

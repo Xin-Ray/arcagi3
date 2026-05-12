@@ -76,7 +76,10 @@ def _load_g_val(override: str) -> list[str]:
     return json.loads(SPLIT_PATH.read_text(encoding="utf-8"))["g_val"]
 
 
-def _make_agent(dry_run: bool, checkpoint: str | None, seed: int):
+def _make_agent(
+    dry_run: bool, checkpoint: str | None, seed: int,
+    max_new_tokens: int, temperature: float,
+):
     """Choose the agent. --dry-run -> RandomAgent (no model load)."""
     if dry_run:
         from arc_agent.agents.random import RandomAgent
@@ -86,7 +89,12 @@ def _make_agent(dry_run: bool, checkpoint: str | None, seed: int):
     from arc_agent.vlm_backbone import HFBackbone
 
     backbone = HFBackbone.load(lora_path=checkpoint)
-    return VLMAgent(backbone=backbone, seed=seed)
+    return VLMAgent(
+        backbone=backbone,
+        seed=seed,
+        max_new_tokens=max_new_tokens,
+        temperature=temperature,
+    )
 
 
 def _resolve_full_ids(arc: Arcade, requested: list[str]) -> list[str]:
@@ -153,6 +161,14 @@ def main() -> None:
         "--no-images", action="store_true",
         help="Skip per-step PNG and play.gif.",
     )
+    parser.add_argument(
+        "--max-new-tokens", type=int, default=768,
+        help="VLM generate budget per step.",
+    )
+    parser.add_argument(
+        "--temperature", type=float, default=0.0,
+        help="VLM sampling temperature (0.0 = greedy).",
+    )
     args = parser.parse_args()
 
     _check_key()
@@ -172,7 +188,10 @@ def main() -> None:
     games = _resolve_full_ids(arc, _load_g_val(args.games))
     print(f"Validating on {len(games)} game(s): {games}")
 
-    agent = _make_agent(args.dry_run, args.checkpoint or None, args.seed)
+    agent = _make_agent(
+        args.dry_run, args.checkpoint or None, args.seed,
+        args.max_new_tokens, args.temperature,
+    )
 
     card_id = arc.open_scorecard(tags=[args.tag, "g_val"])
     print(f"Scorecard {card_id} opened.")
