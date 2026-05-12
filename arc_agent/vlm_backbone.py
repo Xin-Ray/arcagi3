@@ -31,12 +31,16 @@ class VLMBackbone(Protocol):
 def load_model(
     model_path: str = DEFAULT_MODEL,
     quantize: Optional[str] = "4bit",
+    lora_path: Optional[str] = None,
 ) -> Tuple[Any, Any]:
-    """Load Qwen2.5-VL with optional bitsandbytes quantization.
+    """Load Qwen2.5-VL with optional bitsandbytes quantization + LoRA adapter.
 
     Args:
         model_path: HuggingFace repo id or local checkpoint path.
         quantize: "4bit" (default) | "8bit" | None (full precision).
+        lora_path: optional PEFT LoRA adapter dir; applied on top of the
+            base model. Used by `scripts/run_validation.py` to evaluate
+            trained checkpoints.
 
     Returns:
         (model, processor) tuple, both in eval mode, on the chosen device.
@@ -83,6 +87,16 @@ def load_model(
 
     model = Qwen2_5_VLForConditionalGeneration.from_pretrained(model_path, **kwargs)
     processor = AutoProcessor.from_pretrained(model_path)
+
+    if lora_path:
+        try:
+            from peft import PeftModel
+        except ImportError as e:
+            raise ImportError(
+                "lora_path requires `peft` — pip install peft"
+            ) from e
+        model = PeftModel.from_pretrained(model, lora_path)
+
     model.eval()
     return model, processor
 
@@ -165,6 +179,7 @@ class HFBackbone:
         cls,
         model_path: str = DEFAULT_MODEL,
         quantize: Optional[str] = "4bit",
+        lora_path: Optional[str] = None,
     ) -> "HFBackbone":
-        model, processor = load_model(model_path, quantize)
+        model, processor = load_model(model_path, quantize, lora_path=lora_path)
         return cls(model, processor)

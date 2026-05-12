@@ -100,7 +100,7 @@ py -3.12 -m venv .venv
 | ✅ 脚本 | `scripts/make_gif.py` | 把一个 run 文件夹的 `step_*.png` 合成 `play.gif` |
 | ✅ 脚本 | `scripts/run_baseline.py` | RL Step 5:zero-shot Qwen 在 G_base 上跑 + GIF;`--dry-run` 走 RandomAgent 烟雾测过 |
 | 🟡 脚本 | `scripts/run_grpo.py` | RL Step 7:骨架 + `--dry-run` 已跑;rollout adapter 待 Step 6 通过后接入 |
-| ⬜ 待建 | `scripts/run_validation.py` | RL Step 8:训后在 G_val 上对比 |
+| 🟡 脚本 | `scripts/run_validation.py` | RL Step 8:加载 LoRA + 跑 G_val + 可选 `--compare-to baseline summary`;dry-run 过 |
 | ✅ 文档 | `README.md` | 本文 |
 | ✅ 文档 | `docs/ARCHITECTURE_RL.md` | 深度设计 + §9 文件级实施步骤 |
 | ✅ 文档 | `CLAUDE.md` | Claude Code 工作规则 + 已知坑 |

@@ -536,7 +536,7 @@ CLAUDE.md 的"库优先"规则仍然强制:任何会被复用的函数必须进 
 - **测试**:`tests/test_train_grpo.py::test_reward_fn_*`(每条惩罚/奖励路径单独覆盖)
 - **Acceptance**:reward_fn 单测过 + 在 G_train 上能跑出至少 50 个 GRPO step 不 OOM(显存日志记 peak ≤ 18GB)
 
-### Step 8 — GRPO 训练 + Validation  ⬜
+### Step 8 — GRPO 训练 + Validation  🟡(2026-05-11:validation 脚本 + `vlm_backbone.lora_path` 就位,dry-run 过;实际训练仍待 Step 6 通过)
 
 - **预注册 Hypothesis**:G_val mean RHAE 训后比训前提升 ≥ 0.05;G_train 提升 ≥ 0.10(sanity check)
 - **训练**:`python scripts/run_grpo.py ...`,wall-clock ≤ 4 GPU-days,early stop 看 G_val mean RHAE 连续 3 次 val 不涨
