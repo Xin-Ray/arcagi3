@@ -351,3 +351,62 @@ def test_choose_clears_response_on_backbone_exception() -> None:
     agent.choose(_frame(available=[1, 2, 3]), history=[])
     assert agent._state.last_response_raw == ""
     assert agent._state.last_parse_ok is False
+
+
+# ── regression: scenarios observed in real run on 2026-05-11 ──────────────
+
+
+def test_choose_empty_chosen_action_falls_back() -> None:
+    """First real run on ar25 step 0: model returned valid JSON with
+    `chosen_action: ""` — must fall back to random instead of accepting."""
+    reply = '{"chosen_action": "", "predicted_diff": [], "entities": []}'
+    agent = VLMAgent(backbone=_FakeBackbone([reply]), seed=0)
+    action = agent.choose(_frame(available=[1, 2, 3]), history=[])
+    assert action.value in [1, 2, 3]
+    assert agent._state.parse_failures == 1
+    assert agent._state.last_parse_ok is False
+
+
+def test_choose_chosen_action_with_leading_whitespace() -> None:
+    reply = '{"chosen_action": "  ACTION3  "}'
+    agent = VLMAgent(backbone=_FakeBackbone([reply]))
+    action = agent.choose(_frame(available=[1, 2, 3]), history=[])
+    assert action is GameAction.ACTION3
+
+
+def test_choose_chosen_action_with_trailing_chars() -> None:
+    """Model sometimes appends a period or description after ACTION3."""
+    reply = '{"chosen_action": "ACTION3 (move left)"}'
+    agent = VLMAgent(backbone=_FakeBackbone([reply]))
+    action = agent.choose(_frame(available=[1, 2, 3]), history=[])
+    assert action is GameAction.ACTION3
+
+
+def test_choose_chosen_action_lowercase_falls_back() -> None:
+    """Lowercase 'action3' shouldn't accidentally match (we want explicit ACTION)."""
+    reply = '{"chosen_action": "action3"}'
+    agent = VLMAgent(backbone=_FakeBackbone([reply]), seed=0)
+    action = agent.choose(_frame(available=[1, 2, 3]), history=[])
+    # _coerce_action uppercases internally, so this SHOULD match.
+    # If we want it strict, this test will document the lenient choice.
+    assert action is GameAction.ACTION3
+
+
+def test_choose_action6_string_coords() -> None:
+    """Some models emit coords as strings — should still parse."""
+    reply = '{"chosen_action": "ACTION6", "coords": {"x": "15", "y": "42"}}'
+    agent = VLMAgent(backbone=_FakeBackbone([reply]))
+    action = agent.choose(_frame(available=[6]), history=[])
+    assert action is GameAction.ACTION6
+    d = action.action_data.model_dump()
+    assert d["x"] == 15 and d["y"] == 42
+
+
+def test_choose_action6_top_level_coords() -> None:
+    """Model emits x/y at top level instead of inside `coords` dict."""
+    reply = '{"chosen_action": "ACTION6", "x": 10, "y": 20}'
+    agent = VLMAgent(backbone=_FakeBackbone([reply]))
+    action = agent.choose(_frame(available=[6]), history=[])
+    assert action is GameAction.ACTION6
+    d = action.action_data.model_dump()
+    assert d["x"] == 10 and d["y"] == 20

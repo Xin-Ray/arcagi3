@@ -549,6 +549,44 @@ CLAUDE.md 的"库优先"规则仍然强制:任何会被复用的函数必须进 
 
 ---
 
+## 第 10 节:部署 — Kaggle 离线预算
+
+### 10.1 实测 VRAM(2026-05-11,A4500 20GB)
+
+| 阶段 | VRAM 占用 | 备注 |
+|---|---|---|
+| 启动后空闲(Windows 桌面)| **~1.3 GB** | 系统进程占用 |
+| Qwen2.5-VL-3B-Instruct,4-bit (bnb nf4) + processor | **~4.8 GB** 净增 | 见 baseline run 中 nvidia-smi 实测 |
+| 推理时 KV cache(`max_new_tokens=512`,batch=1)| **~5 GB** 净 | 含模型 + 单步生成 |
+| **总占用** | **~6.2 GB / 20.5 GB** | A4500 上有大量余量 |
+
+**Kaggle T4 (16 GB) 余量预估**:16 - 5 ≈ **11 GB 可用**,远高于设计目标 `≥ 2GB 余量`。**Stage E 显存目标:已通过(纸面)**;还需要离线 notebook 真实跑过才算正式通过。
+
+### 10.2 时间预算
+
+- Qwen 加载(首次)≈ 4 分钟(7GB 下载 + 量化)— **Kaggle 必须 pre-cache**(模型权重打进 Kaggle Dataset)。
+- Qwen 加载(已缓存)≈ 5 秒。
+- 单步推理 ≈ 10–15 秒(含 prompt 构造 + 512 token 生成 + 解析 + env.step + 图像保存)。
+- **110 games × 80 actions × 12 秒 ≈ 30 小时**,**超过 10 小时硬上限 3 倍**。
+
+**时延优化优先级**(Stage E 阻塞项):
+1. **关掉每步图像保存**(`--no-images`)—— 估计省 2–3 秒/step → ~22h
+2. **降低 `max_new_tokens`** 到 256 —— prompt 大头是 entities 列表,可砍 → 估计省 30–40%
+3. **关掉 entity 段(段 4)**—— baseline 跑出来再判断是否必要 —— 进一步省
+4. **关闭 `do_sample`,greedy decoding** —— 推理时不需要随机
+5. **早停**:状态稳定 N 步无变化 → give-up,节省后续无效步数
+
+预计组合后:~80 步 × 5–6 秒 = 7–8 分钟/局 × 110 = **~14 小时**。仍超,需要继续找。
+
+### 10.3 离线打包清单(待 Step 6 通过后再打包)
+
+- [ ] Qwen2.5-VL-3B 权重(本地路径 / Kaggle Dataset)
+- [ ] LoRA adapter(训后)
+- [ ] `requirements.txt` 加上训练栈版本锁定(避免 Kaggle 默认环境冲突)
+- [ ] Notebook 入口:`agent_starter.py` 改造,从本地 dataset 加载,无 HF 联网请求
+
+---
+
 ### Run Log(append-only)
 
 每次跑完 Step 6 / Step 8 在这里追加一行:`<日期> | <step#> | <核心数字> | <触发分支> | <下一步>`。
