@@ -93,13 +93,13 @@ py -3.12 -m venv .venv
 | ✅ 库 | `arc_agent/vlm_backbone.py` | `HFBackbone.load` / `load_model` / `generate` — Qwen2.5-VL 加载,惰性导入 |
 | ✅ 库 | `arc_agent/viz.py` | `compose_step_image`(4 宫格合成图)+ `write_gif` |
 | ✅ 库 | `arc_agent/baseline.py` | `play_one_with_trace`(1 局 → step PNG + trace.jsonl + play.gif + 指标) |
-| ⬜ 待建 | `arc_agent/train_grpo.py` | GRPO trainer 封装 — Step 7 |
+| ✅ 库 | `arc_agent/train_grpo.py` | `reward_fn` (§3 公式) + `build_trainer` (惰性 trl)— Step 7 |
 | ✅ 脚本 | `scripts/agent_starter.py` | 单局 RandomAgent demo |
 | ✅ 脚本 | `scripts/eval.py` | 批量评估(`--agent {random,llm,llm-haiku}`) |
 | ✅ 脚本 | `scripts/freeze_splits.py` | 一次性冻结 demo-25 5-5-5 划分到 `data/splits/demo_555.json` |
 | ✅ 脚本 | `scripts/make_gif.py` | 把一个 run 文件夹的 `step_*.png` 合成 `play.gif` |
 | ✅ 脚本 | `scripts/run_baseline.py` | RL Step 5:zero-shot Qwen 在 G_base 上跑 + GIF;`--dry-run` 走 RandomAgent 烟雾测过 |
-| ⬜ 待建 | `scripts/run_grpo.py` | RL Step 7:GRPO 训练在 G_train 上 |
+| 🟡 脚本 | `scripts/run_grpo.py` | RL Step 7:骨架 + `--dry-run` 已跑;rollout adapter 待 Step 6 通过后接入 |
 | ⬜ 待建 | `scripts/run_validation.py` | RL Step 8:训后在 G_val 上对比 |
 | ✅ 文档 | `README.md` | 本文 |
 | ✅ 文档 | `docs/ARCHITECTURE_RL.md` | 深度设计 + §9 文件级实施步骤 |
@@ -112,7 +112,7 @@ py -3.12 -m venv .venv
 .
 ├── arc_agent/        库(除模型加载外不做 I/O)
 ├── scripts/          入口脚本(只编排,不放可复用逻辑)
-├── tests/            pytest(136 个全过)
+├── tests/            pytest(158 个全过)
 ├── data/             inputs/(测试 PNG)、train/(silver-label JSONL)
 ├── outputs/          runs/、checkpoints/、baseline_<ts>/ 等(gitignore)
 ├── docs/             只有 ARCHITECTURE_RL.md
@@ -216,11 +216,11 @@ outputs/
 ### D. RL 训练(GRPO + intrinsic F1 reward)
 
 > **出口**:G_val mean RHAE 训后比训前涨 ≥ 0.05;否则记录失败模式回头诊断。
-> **进度**:0 / 2 完成。**依赖 C 通过。**
+> **进度**:1 / 2 完成(reward_fn + trainer factory + dry-run 骨架已就位,22 个测试覆盖每条奖励路径)。**实际训练依赖 C/Step 6 通过。**
 
 | 状态 | 任务 | 路径 | §9 Step |
 |---|---|---|---|
-| ⬜ | GRPO trainer 封装(reward_fn 单测全过 + 不 OOM) | `arc_agent/train_grpo.py` + `scripts/run_grpo.py` | 7 |
+| ✅ | GRPO trainer 封装(`reward_fn` 单测全过,`build_trainer` 惰性 trl)+ `scripts/run_grpo.py --dry-run` | `arc_agent/train_grpo.py` + `scripts/run_grpo.py` | 7 |
 | ⬜ | 跑 GRPO 训练(≤ 4 GPU-days,early stop)+ Validation 对比 | `scripts/run_validation.py` | 8 |
 
 ### E. 部署提交(Kaggle 离线)

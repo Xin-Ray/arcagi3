@@ -526,7 +526,7 @@ CLAUDE.md 的"库优先"规则仍然强制:任何会被复用的函数必须进 
   - 0.1 ≤ F1 < 0.3 → 消融实验(单图 vs 双图;有 entity 段 vs 无)
 - **Acceptance**:summary.json + 触发的分支结论写在本文件 §9 末尾的"Run Log"小节(append-only)
 
-### Step 7 — `scripts/run_grpo.py`  ⬜
+### Step 7 — `scripts/run_grpo.py`  🟡(2026-05-11:reward_fn + build_trainer + --dry-run 骨架就位;rollout adapter 待 Step 6 通过后接入)
 
 - **文件**:`scripts/run_grpo.py`(脚本)+ `arc_agent/train_grpo.py`(库,封装 trl.GRPOTrainer 的 setup)
 - **签名**:
