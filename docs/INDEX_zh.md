@@ -48,7 +48,11 @@ status:  不进文件名 — 状态在本 INDEX 写(状态会变,文件名稳定
 
 > 拿 2026-05-14 真跑的 `outputs/v3_2_ar25_3x30/round_00/step=6` 做参照,把 v3.2 三个板块(perception、reflection、action)的**输入来源、SYSTEM/USER prompt、实际输出**逐字展开 + 关键文件索引 + 暴露的问题。**理解 v3.2 数据流 / 改板块行为前必读**。
 
-### 5. [ref_object_pipeline_zh.md](./ref_object_pipeline_zh.md)
+### 5. [ref_v3_2_hardrules_results_zh.md](./ref_v3_2_hardrules_results_zh.md) ⭐ **v3.2 硬规则实测对比**
+
+> commit `1bac4be` 引入的 R1+R2+R3(Knowledge sentinel / action mask / stuck untried)在 ar25 3 round × 30 step 上的对比实测。change_rate 从 23/17/17% 升到 60/100/97%,no_op_streak 16→0,ACTION6 spam 22+23 次被 R2 全拦。**理解硬规则必要性、找下一步攻击方向前读这个**。
+
+### 6. [ref_object_pipeline_zh.md](./ref_object_pipeline_zh.md)
 
 > 视觉感知层的设计 + 评测。**结论**:Qwen-VL 对单帧 / 对齐都不可靠,改用 `scipy.ndimage.label` + Hungarian。包含 ar25 上 scipy 100% vs Qwen 0% 的实测对比。
 
@@ -56,7 +60,7 @@ status:  不进文件名 — 状态在本 INDEX 写(状态会变,文件名稳定
 
 ## 🟡 主要参考(挑着看)
 
-### 6. [arch_rl_v0_zh.md](./arch_rl_v0_zh.md)
+### 7. [arch_rl_v0_zh.md](./arch_rl_v0_zh.md)
 
 > 最早的 RL 路线设计(intrinsic F1 reward + GRPO),带 2026-05-12 实测红字批注。**v3 已偏离这条路线** —— 现在没在跑训练,只在 prompt + 检测器层迭代。看这个主要是了解为什么不走 RL。**留在 docs/ 因为 CLAUDE.md / README.md 多处引用。**
 
