@@ -175,12 +175,29 @@ class Knowledge:
                 if isinstance(k, str) and v is not None:
                     new.action_semantics[k] = _clip(v)
 
-        # goal_hypothesis_update — replace if non-null AND not a sentinel.
-        # R1: sentinel filter prevents "unknown" / "none" / etc. from
-        # polluting Knowledge when Reflection violates the SYSTEM prompt.
+        # R5: prospective failed_strategies set (existing + to-be-appended)
+        # used to cross-check goal_hypothesis_update below. Reflection
+        # sometimes writes a failed_strategies-style string into the
+        # goal_hypothesis field; this guard drops it instead of letting
+        # the wrong-direction hypothesis pollute downstream Action prompts.
+        prospective_failed_lower: set[str] = {
+            s.strip().lower() for s in new.failed_strategies
+        }
+        for s in delta.get("failed_strategies_append") or []:
+            s_str = _clip(s).strip()
+            if s_str:
+                prospective_failed_lower.add(s_str.lower())
+
+        # goal_hypothesis_update — replace if non-null AND not a sentinel
+        # AND not a failed_strategies cross-pollution.
+        # R1: sentinel filter prevents "unknown" / "none" / etc.
+        # R5: reject when the would-be hypothesis duplicates a failed
+        # strategy (Reflection writing into the wrong field).
         goal_upd = delta.get("goal_hypothesis_update")
         if goal_upd is not None and not _is_goal_sentinel(goal_upd):
-            new.goal_hypothesis = _clip(goal_upd)
+            candidate = str(goal_upd).strip()
+            if candidate.lower() not in prospective_failed_lower:
+                new.goal_hypothesis = _clip(goal_upd)
 
         # goal_confidence_update — replace if valid
         conf_upd = delta.get("goal_confidence_update")

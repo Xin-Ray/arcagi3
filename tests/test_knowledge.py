@@ -184,6 +184,103 @@ def test_merge_filters_sentinel_when_no_prior_hypothesis() -> None:
     assert k2.goal_hypothesis == ""
 
 
+# ── R5: failed_strategies cross-pollution filter ─────────────────────────
+
+
+def test_R5_rejects_goal_matching_existing_failed_strategy() -> None:
+    """Reproduces the v2 ar25 bug: Reflection wrote
+    `goal_hypothesis_update: "ACTION6 anywhere in the right half."`
+    while that exact string was already in failed_strategies. R5 drops it."""
+    k = Knowledge.empty("ar25")
+    k.failed_strategies = ["ACTION6 anywhere in the right half."]
+    k.goal_hypothesis = "valid prior goal"
+
+    delta = {
+        "goal_hypothesis_update": "ACTION6 anywhere in the right half.",
+    }
+    k2 = k.merged_with_delta(delta)
+    assert k2.goal_hypothesis == "valid prior goal", (
+        f"R5 should reject cross-pollution; got {k2.goal_hypothesis!r}"
+    )
+
+
+def test_R5_rejects_goal_matching_appended_failed_strategy() -> None:
+    """When the same delta both APPENDS a failed_strategies entry AND
+    writes that same string into goal_hypothesis_update -- reject the
+    goal write but still accept the failed_strategies append."""
+    k = Knowledge.empty("ar25")
+    k.goal_hypothesis = "prior goal"
+
+    delta = {
+        "goal_hypothesis_update": "ACTION6 anywhere in the right half.",
+        "failed_strategies_append": ["ACTION6 anywhere in the right half."],
+    }
+    k2 = k.merged_with_delta(delta)
+
+    # goal_hypothesis stays as prior; failed_strategies gets appended
+    assert k2.goal_hypothesis == "prior goal"
+    assert "ACTION6 anywhere in the right half." in k2.failed_strategies
+
+
+def test_R5_case_insensitive_match() -> None:
+    """Cross-pollution check is case-insensitive."""
+    k = Knowledge.empty("ar25")
+    k.failed_strategies = ["acTion6 ANYWHERE in the right half."]
+    k.goal_hypothesis = "prior"
+
+    delta = {"goal_hypothesis_update": "ACTION6 anywhere in the RIGHT HALF."}
+    k2 = k.merged_with_delta(delta)
+    assert k2.goal_hypothesis == "prior"
+
+
+def test_R5_whitespace_tolerant() -> None:
+    """Leading/trailing whitespace should not let a copy through."""
+    k = Knowledge.empty("ar25")
+    k.failed_strategies = ["ACTION6 anywhere in the right half."]
+    k.goal_hypothesis = "prior"
+
+    delta = {"goal_hypothesis_update": "  ACTION6 anywhere in the right half.  "}
+    k2 = k.merged_with_delta(delta)
+    assert k2.goal_hypothesis == "prior"
+
+
+def test_R5_legitimate_goal_passes_through() -> None:
+    """Goals that are NOT in failed_strategies must still be accepted --
+    R5 should have zero false positives on real hypotheses."""
+    k = Knowledge.empty("ar25")
+    k.failed_strategies = ["ACTION6 anywhere in the right half."]
+
+    delta = {"goal_hypothesis_update": "reach the red dot at the top of the grid"}
+    k2 = k.merged_with_delta(delta)
+    assert k2.goal_hypothesis == "reach the red dot at the top of the grid"
+
+
+def test_R5_legitimate_goal_with_action_word_passes() -> None:
+    """A goal mentioning an action by name (but not matching a failed
+    strategy) should pass."""
+    k = Knowledge.empty("ar25")
+    k.failed_strategies = ["clicking center never advances"]
+
+    delta = {
+        "goal_hypothesis_update": "use ACTION1 to move the avatar to the top edge"
+    }
+    k2 = k.merged_with_delta(delta)
+    assert k2.goal_hypothesis == "use ACTION1 to move the avatar to the top edge"
+
+
+def test_R5_does_not_block_failed_append() -> None:
+    """R5 must NOT break the failed_strategies append path -- it should
+    only filter the goal write."""
+    k = Knowledge.empty("ar25")
+    delta = {
+        "goal_hypothesis_update": "new bad goal",
+        "failed_strategies_append": ["new bad goal"],
+    }
+    k2 = k.merged_with_delta(delta)
+    assert "new bad goal" in k2.failed_strategies   # append succeeded
+    assert k2.goal_hypothesis == ""   # but goal write was blocked
+
+
 def test_merge_goal_confidence_invalid_keeps_prior() -> None:
     k = Knowledge.empty("ar25")
     k.goal_confidence = "medium"
