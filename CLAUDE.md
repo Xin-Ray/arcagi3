@@ -1,19 +1,44 @@
 # CLAUDE.md
 
-Guidance for Claude Code working in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project
 
-ARC-AGI-3 competition agent research (ARC Prize 2026). The goal is to build agents that autonomously explore turn-based game environments with no instructions, infer rules, discover win conditions, and complete levels efficiently. See `TASK_OVERVIEW.md` for full competition details.
+ARC-AGI-3 competition agent research (ARC Prize 2026). The goal is to build agents that autonomously explore turn-based grid-puzzle environments with no instructions, infer rules, discover win conditions, and complete levels efficiently. See `TASK_OVERVIEW.md` for the full competition spec.
 
-## Single source of truth
+## Where to start reading
 
-Two entry docs:
+The repo has three layers of authoritative docs — read in this order on takeover:
 
-- **`README.md`** — 3-minute project takeover (project goal, data flow, what to run, current state, TODO).
-- **`docs/ARCHITECTURE_RL.md`** — deep design doc + §9 file-level implementation steps + Run Log. Read before any substantive work.
+1. **`README.md`** — 3-minute project overview (goal, data flow, what to run, current state, TODO board with stage gates).
+2. **`docs/INDEX_zh.md`** — doc index + naming rules (`{arch|ref}_{name}_{version}_{lang}.md`). Tells you which doc is 🟢 active, 🟡 reference, ⚫ archived.
+3. **`docs/arch_v3_2_zh.md`** (current main design) → **`docs/arch_v3_zh.md`** (the v3 baseline it builds on) → **`docs/ref_v3_prompt_zh.md`** (prompt block reference, read before touching prompts) → **`docs/ref_object_pipeline_zh.md`** (scipy vs Qwen-VL perception evaluation).
 
-Everything else previously in `docs/` and the old `vlm_test/` workspace was archived to `archive/` on 2026-05-11 (read-only history). New design notes, status, and Run Log entries go into `docs/ARCHITECTURE_RL.md` directly.
+`docs/arch_rl_v0_zh.md` is the **older RL line** (intrinsic F1 reward + GRPO). It is **parked, not deleted** — v3 deviated from it after empirical results made the text-only-Qwen + scipy-perception route win. Read it only if you're touching `rewards.py` / `train_grpo.py` / `run_grpo.py` or you need to understand the historical decision.
+
+## Active line: v3 / v3.2 (as of 2026-05-14)
+
+The current architecture is **NOT** "VLM with image input + intrinsic F1 reward". It is:
+
+```
+scipy.ndimage.label  ──►  object_extractor  ──►  temporal_classifier  ──►  object_aligner (Hungarian)
+        │                                                                              │
+        ▼                                                                              ▼
+    (perception is 100% deterministic, no LLM in the loop)              ObjectMemory + OutcomeLog
+                                                                                       │
+                                                                                       ▼
+                                              prompts_v3.build_play_prompt  ◄──── enriched prompt
+                                                                                       │
+                                                                                       ▼
+                                                Qwen2.5-VL-3B  in TEXT-ONLY mode  (no image content block)
+                                                                                       │
+                                                                                       ▼
+                                            anti-collapse postprocess  →  ACTION
+```
+
+Key principle (`docs/arch_v3_zh.md` §0): **vision = deterministic algorithm; reasoning = text LLM; the two are connected by structured data, and the LLM never sees pixels.** This was decided because `ref_object_pipeline_zh.md` showed Qwen-VL at ~0% on per-frame object extraction while scipy was at 100% on the same ar25 set.
+
+**v3.2 layer on top** (`docs/arch_v3_2_zh.md`): split into **Action Agent + Reflection Agent** with a shared `Knowledge` object that persists across rounds within the same `game_id`. Reflection runs **per step** (not per round) so the Action Agent can use within-episode discoveries. Currently being implemented; the v3 single-agent code is what's actually running.
 
 ## Library-first coding (mandatory)
 
@@ -29,22 +54,32 @@ Before writing any function-shaped piece of code:
 
 Deprecation: don't delete; mark `Status: deprecated → <replacement>` in a docstring and keep the symbol for at least two weeks.
 
-## Repository State
+## Key modules (what to grep when you need something)
 
-Pivoted from BC training (Phase 2) to **RL with intrinsic F1 reward** on 2026-05-11 (see `docs/ARCHITECTURE_RL.md` §0 战略决策). Current step: `docs/ARCHITECTURE_RL.md` §9 Step 3 (`VLMAgent` 推理 loop) — Steps 1–2 (`grid_to_image`, `rewards.py` primitives) are merged.
+These are the load-bearing pieces of the v3 pipeline. Names match exactly; module-level docstrings have the full contract.
 
-Folder layout (post-restructure 2026-05-11):
+- **Perception** — `object_extractor.py` (scipy connected components → `ObjectRecord`), `temporal_classifier.py` (STATIC / ACTIVE / TEXTURE / CANDIDATE per object across frames), `object_aligner.py` (Hungarian cross-frame match), `object_tracker.py` (UID-keyed `ObjectMemory` for an episode).
+- **Memory** — `action_inference.py` (`OutcomeLog`, `StepOutcome`, `detect_stuck`, `detect_collapse`, `summarize_action` → `LearnedActionMap`), `world_model.py` (persistent A3 state across steps), `click_candidates.py` (ACTION6 coordinate proposals).
+- **Reasoner** — `prompts_v3.py` (8-block prompt builder), `agents/text_agent.py` (current main agent — text-only Qwen + anti-collapse), `vlm_backbone.py` (Qwen2.5-VL loader with lazy `torch/transformers` import).
+- **Reflection / mistakes** — `agents/reflect.py` (PlayReflectAgent A3/A4), `mistakes.py` (deterministic mistake detectors).
+- **Run plumbing** — `runner.py` (`Agent` Protocol + `play_one`), `baseline.py` (`play_one_with_trace` — trace.jsonl + step PNGs + play.gif), `viz.py` (4-quadrant `compose_step_image` + `write_gif`), `observation.py` (`grid_to_image`, `serialize_step`), `eval_split.py` (`demo_555_split`, `write_summary`).
+- **Other agents (baselines / ablation)** — `agents/random.py`, `agents/llm.py` (Claude API), `agents/vlm.py` (image-input VLM, used in v1 ablations), `agents/vlm_lite.py` (A1).
+- **RL line (parked)** — `rewards.py` (F1 verifier primitives), `train_grpo.py` (`reward_fn` + lazy `trl` trainer factory). Keep tests passing but no active iteration.
+- **Report / audit** — `report.py` (per-(agent, game) summary aggregator). Companion scripts: `scripts/audit_traces.py`, `scripts/audit_illegal_actions.py`, `scripts/audit_action6_misuse.py`, `scripts/analyze_failures.py`, `scripts/compare_summaries.py`, `scripts/build_v3_visual_report.py`, `scripts/report_v3_vs_v1.py`, `scripts/report_ablation.py`.
 
-- `arc_agent/` — library: `runner.py`, `observation.py` (grid → text/diff/image), `rewards.py` (verifier F1 primitives), `llm.py`, `agents/{random,llm}.py`
-- `scripts/` — entry points: `agent_starter.py` (single-game demo), `eval.py` (batch evaluator). `run_baseline.py` / `run_grpo.py` / `run_validation.py` to be added per `docs/ARCHITECTURE_RL.md` §9 Steps 5–8.
-- `tests/` — pytest suite (72 passing as of 2026-05-11)
-- `data/` — `inputs/` (capability-test PNGs), `train/` (silver-label dataset.jsonl + gitignored images)
-- `outputs/` — `runs/` (eval jsonl, gitignored), `checkpoints/` (training, gitignored), `smoke_test/` (old QLoRA artifacts)
-- `docs/ARCHITECTURE_RL.md` — only active design doc
-- `archive/` — `docs_2026-05-11/` (old seven-doc set), `bc_scripts/` (paused BC pipeline), `old_runs/`, `vlm_test_README.md`, etc.
-- `vendor/ARC-AGI-3-Agents/` — read-only clone of the official scaffold; do **not** edit
+## Repository State (2026-05-14)
 
-**Backbone**: Qwen2.5-VL-3B-Instruct (chosen 2026-04-28). 64×64 grid → 512×512 PNG via `arc_agent.observation.grid_to_image`, fed to the ViT vision encoder. The text-only Qwen3-0.6B route was dropped because hex-encoded grids miss 2D spatial structure (vertically adjacent cells are ~64 tokens apart in a 1D sequence).
+- Tests: **353 collected** in `tests/`. Always run the relevant slice after editing a library module.
+- Active eval entrypoint: `scripts/run_v3_eval.py` (v3 TextAgent on G_base, captures `action_entropy` and `unique_frame_hashes` beyond the baseline schema). Latest result: `outputs/v3_p0b_p1_full/report.md`.
+- Frozen split: `data/splits/demo_555.json` (5 base / 5 train / 5 val game IDs, committed 2026-05-11; **do not re-randomize** — train/val comparability breaks otherwise).
+- Backbone: **Qwen2.5-VL-3B-Instruct in text-only mode** (no image content block). 4-bit, `max_new_tokens=24`, greedy. The vision encoder is loaded but unused on the hot path.
+- `outputs/` (gitignored) layout: `runs/<ts>_<tag>.jsonl` (eval.py), `baseline_<ts>/<game>/{step_*.png,trace.jsonl,play.gif}`, `v3_p0b_p1_full/`, `ablation_overnight_/`, `scipy_object_diag/`, `qwen_object_diag/`, `goal_inference/`.
+- **`outputs/reports/` is the single browse-everything entry for all experiment reports** (see `outputs/reports/INDEX_zh.md`). Rule:
+  - **Active experiments**: report stays in `outputs/<exp>/report.md`; INDEX **links** to it (relative GIFs / PNGs keep working).
+  - **Archived experiments**: report is **copied** into `outputs/reports/<YYYY-MM-DD>_<name>.md` with image / sub-link paths rewritten to point back to `archive/outputs_<date>/<exp>/`. Use `scripts/copy_archived_reports.py` — add the entry to `COPIES` list and run.
+  - When archiving an experiment, do all four: (1) add to `copy_archived_reports.py:COPIES`, (2) run the script, (3) move the source dir into `archive/outputs_<date>/`, (4) update `outputs/reports/INDEX_zh.md` ⚫ section.
+- `archive/` is a **one-way door**: `archive/docs_2026-05-11/` (BC-era 7-doc set), `archive/docs_2026-05-14/` (v1/v2 agent designs superseded by v3), `archive/outputs_2026-05-14/` (27 stale experiment dirs + ~23 logs from 05-11 through 05-14), `archive/bc_scripts/` (paused BC pipeline), `archive/old_runs/`. The contents are indexed in `archive/INDEX_zh.md` (one-line summary per file). To revive anything, explicitly promote it back to the README §4 whitelist first.
+- `vendor/ARC-AGI-3-Agents/` — read-only clone of the official scaffold; do **not** edit.
 
 ## Gotchas
 
@@ -54,43 +89,51 @@ Folder layout (post-restructure 2026-05-11):
 - **`FrameDataRaw.win_levels` is the total level count, not the wins.** Use `levels_completed` for progress.
 - **Windows console (cp1252) cannot encode Unicode arrows** like `→`. Use ASCII (`->`) in any print that may run on Windows.
 - **Default `GAME_ID = "ls20"`**, version 9607627b at time of writing (SDK auto-downloads to `environment_files/ls20/9607627b/ls20.py` — game logic is local Python, not a remote service).
+- **The text-only Qwen path bypasses the vision encoder**, but `vlm_backbone.py` still loads the full multimodal model. If you write a new agent and add an image content block back, you change the inference characteristics — keep `agents/text_agent.py` text-only unless you mean to.
 
 ## Environment
 
 `.venv/` is Python 3.12 (the prior 3.11 venv could not install `arcengine`, which requires ≥3.12). Base interpreter: `C:\Users\sshuser\AppData\Local\Programs\Python\Python312\python.exe`.
 
-A real `ARC_API_KEY` from https://arcprize.org/api-keys must be in `.env` at the repo root (not `.env.example` — see Gotchas). `requirements.txt` pins `arc-agi>=0.9.8` and `arcengine>=0.9.3`. RL training deps (`transformers`, `peft`, `bitsandbytes`, `trl`, `accelerate`, `qwen-vl-utils`) are intentionally **not** in `requirements.txt` to avoid Kaggle conflicts — install separately when running training.
+A real `ARC_API_KEY` from https://arcprize.org/api-keys must be in `.env` at the repo root (not `.env.example` — see Gotchas). `ANTHROPIC_API_KEY` in `.env` enables `LLMAgent`. `requirements.txt` pins `arc-agi>=0.9.8` and `arcengine>=0.9.3`. Training deps (`transformers`, `peft`, `bitsandbytes`, `trl`, `accelerate`, `qwen-vl-utils`) are intentionally **not** in `requirements.txt` to avoid Kaggle conflicts — install separately when running v3 eval or RL training.
 
 ## Commands
 
 ```bash
-# Single-game demo against live SDK (requires real ARC_API_KEY in .env)
+# Tests (full suite, then a single test file)
+.venv/Scripts/python.exe -m pytest tests/ -q
+.venv/Scripts/python.exe -m pytest tests/test_text_agent.py -q
+
+# Single-game demo against live SDK (RandomAgent — sanity check that the SDK + key work)
 .venv/Scripts/python.exe scripts/agent_starter.py
 
-# Batch eval — RandomAgent on all available demo games, 1 episode each
+# Batch eval — RandomAgent on all demo games, 1 episode each
 .venv/Scripts/python.exe scripts/eval.py
 
 # Batch eval — LLMAgent on three keyboard games, 3 episodes each
 .venv/Scripts/python.exe scripts/eval.py --agent llm --games ls20,tr87,wa30 --episodes 3 --tag llm_keyboard
 
-# Tests (full suite, then a single test by node id)
-.venv/Scripts/python.exe -m pytest tests/ -q
-.venv/Scripts/python.exe -m pytest tests/test_rewards.py -q
+# v3 TextAgent eval on G_base (current main path; needs torch + transformers + Qwen weights)
+.venv/Scripts/python.exe scripts/run_v3_eval.py
 ```
 
-`scripts/eval.py` flags: `--agent {random,llm,llm-haiku}`, `--games <comma-list-or-prefix>` (empty = all available demo games), `--episodes N`, `--max-actions N` (default 80), `--tag <label>`, `--output <path>`. It writes one jsonl row per (game, episode) plus a final `__summary__` row to `outputs/runs/<ts>_<tag>.jsonl`.
+`scripts/eval.py` flags: `--agent {random,llm,llm-haiku}`, `--games <comma-list-or-prefix>` (empty = all demo), `--episodes N`, `--max-actions N` (default 80), `--tag <label>`, `--output <path>`. Writes one jsonl row per (game, episode) plus a final `__summary__` row to `outputs/runs/<ts>_<tag>.jsonl`.
 
-RL-line entry points (planned per `docs/ARCHITECTURE_RL.md` §9):
+RL-line entry points (parked, dry-run only):
 
 ```bash
-# Step 6 — Baseline (Go/no-go gate)
-.venv/Scripts/python.exe scripts/run_baseline.py --output outputs/baseline_<ts>
+.venv/Scripts/python.exe scripts/run_baseline.py    # zero-shot Qwen, was the Go/no-go gate
+.venv/Scripts/python.exe scripts/run_grpo.py        # --dry-run skeleton
+.venv/Scripts/python.exe scripts/run_validation.py  # --dry-run skeleton
+```
 
-# Step 7 — GRPO training
-.venv/Scripts/python.exe scripts/run_grpo.py --output outputs/grpo_<ts>
+**Long-running jobs over SSH must go through `scripts/run_scheduled.ps1`** — see the `scheduler-run` skill at `.claude/skills/scheduler-run/SKILL.md`. Bare `Start-Process -WindowStyle Hidden` does **not** survive SSH disconnect on Windows (the SSH session's job object kills all descendants). Pattern:
 
-# Step 8 — Validation (post-training)
-.venv/Scripts/python.exe scripts/run_validation.py --checkpoint <path> --output outputs/validation_<ts>
+```powershell
+# Wraps the python call in a Task Scheduler task (-LogonType S4U).
+# First run needs an ELEVATED PowerShell; the python job itself runs as the user.
+.\scripts\run_scheduled.ps1 v3_eval scripts\run_v3_eval.py `
+    --output outputs\v3_eval_run --max-actions 80
 ```
 
 ## Core Concepts
@@ -107,7 +150,9 @@ RL-line entry points (planned per `docs/ARCHITECTURE_RL.md` §9):
 
 **Datasets**: 25 public demo environments (easier), 55 semi-private (API testing), 55 fully private (competition eval). Access via `arc.make(game_id)`.
 
-**Intrinsic F1 reward** (RL-line core idea, `docs/ARCHITECTURE_RL.md` §3): each step the agent predicts which cells will change. We compare the predicted set to the real change set extracted from `(s_t, s_{t+1})` and score with F1. That F1 becomes a dense reward signal — every step gives feedback, no waiting for WIN. Implemented in `arc_agent/rewards.py`.
+**v3 reasoning loop** (per `docs/arch_v3_zh.md` §2): every `env.step` triggers deterministic perception → memory update → 8-block enriched prompt → text-only Qwen → anti-collapse postprocess (if last 3 actions are the same, force a different `untried` action). The prompt blocks are `[STATUS] [ACTIVE] [TEXTURE] [ACTION] [UNTRIED] [HISTORY] [GOAL] [ASK]` — `ref_v3_prompt_zh.md` is the per-block reference.
+
+**Intrinsic F1 reward** (parked, RL-line): each step the agent predicts which cells will change; predicted set vs real change set scored with F1, used as dense reward signal. Implemented in `arc_agent/rewards.py`. **Not on the current path** — v3 doesn't predict diffs.
 
 ## Agent Interface
 
@@ -137,6 +182,7 @@ Notes:
 - Action enum lives in `arcengine`, **not** `arc_agi`. Both are pinned in `requirements.txt`.
 - `env.step` returns a single `FrameDataRaw` object (not a 5-tuple). Use `latest.state`, `latest.levels_completed`, `latest.guid`, `latest.frame` (and remember `latest.win_levels` is the total level count, not wins).
 - A single scorecard can span many `arc.make(...)` calls — `play_one` does **not** close the scorecard so the caller can run a whole batch under one card. `scripts/eval.py` opens one card per run and closes it at the end.
+- v3 agents (`text_agent.py`) expose `_state.last_prompt` / `last_response_raw` / `last_parse_ok` so `baseline.play_one_with_trace` can capture them into `trace.jsonl`. New agents should follow the same convention if they want to appear in trace audits.
 - `render_mode="terminal"` is available for visual debugging; omit for speed.
 
 ## Key Links
