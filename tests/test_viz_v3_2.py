@@ -11,6 +11,8 @@ import pytest
 
 from arc_agent.viz_v3_2 import (
     ALERT_BG,
+    GRID_PANE_H,
+    GRID_PANE_W,
     HEADER_H,
     PANEL_H,
     PANEL_W,
@@ -45,8 +47,8 @@ def test_returns_pil_image_with_correct_size() -> None:
         matches_reasoning="YES",
     )
     assert img.size == (TOTAL_W, TOTAL_H)
-    assert TOTAL_W == 512
-    assert TOTAL_H == HEADER_H + PANEL_H
+    assert TOTAL_W == GRID_PANE_W + PANEL_W
+    assert TOTAL_H == HEADER_H + GRID_PANE_H
 
 
 def test_handles_small_grid_via_letterbox() -> None:
@@ -84,9 +86,9 @@ def test_alert_bar_paints_red_when_alert_present() -> None:
         reflection_delta=None,
         alert="STOP spamming ACTION1",
     )
-    # Top-left of right panel should be red-ish (ALERT_BG)
-    # right panel x range: [PANEL_W, 2*PANEL_W); y range: [HEADER_H, ...)
-    px = _pixel(img, PANEL_W + 3, HEADER_H + 3)
+    # Top-left of right panel should be red-ish (ALERT_BG).
+    # Right panel starts at x=GRID_PANE_W, y=HEADER_H.
+    px = _pixel(img, GRID_PANE_W + 3, HEADER_H + 3)
     assert px == ALERT_BG
 
 
@@ -99,7 +101,7 @@ def test_no_alert_bar_when_alert_empty() -> None:
         alert="",
     )
     # Same pixel location should be the dark panel bg, not red
-    px = _pixel(img, PANEL_W + 3, HEADER_H + 3)
+    px = _pixel(img, GRID_PANE_W + 3, HEADER_H + 3)
     assert px != ALERT_BG
 
 

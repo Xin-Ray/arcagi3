@@ -30,13 +30,16 @@ from arc_agent.observation import grid_to_image
 
 
 # ── layout constants ───────────────────────────────────────────────────────
+# Sized 2026-05-14 so the grid is actually legible (was 256x256 -> too small).
 
-GRID_CELL_SCALE = 4         # 64×64 grid -> 256×256 image
-PANEL_W = 256
-PANEL_H = 256               # match grid height
-HEADER_H = 30
-TOTAL_W = PANEL_W * 2       # 512
-TOTAL_H = HEADER_H + PANEL_H   # 286
+GRID_CELL_SCALE = 8         # 64x64 grid -> 512x512 image
+GRID_PANE_W = 64 * GRID_CELL_SCALE   # 512
+GRID_PANE_H = 64 * GRID_CELL_SCALE   # 512
+PANEL_W = 384               # right text panel
+PANEL_H = GRID_PANE_H       # match grid height -> 512
+HEADER_H = 40
+TOTAL_W = GRID_PANE_W + PANEL_W      # 896
+TOTAL_H = HEADER_H + GRID_PANE_H     # 552
 
 BG_COLOR = (20, 20, 20)
 TEXT_COLOR = (220, 220, 220)
@@ -50,9 +53,9 @@ MATCH_COLORS = {
     "N/A": (160, 160, 160),
 }
 
-_TEXT_WRAP_CHARS = 32       # right panel is narrow
-_PANEL_PAD = 6
-_LINE_H = 12
+_TEXT_WRAP_CHARS = 48       # right panel is 384px / ~8px per default char
+_PANEL_PAD = 10
+_LINE_H = 14
 
 
 def _wrap(text: str, width: int = _TEXT_WRAP_CHARS) -> list[str]:
@@ -123,13 +126,14 @@ def compose_step_image_v32(
     if header:
         draw.text((10, 8), header[:80], fill=(255, 255, 255))
 
-    # Left pane: grid -- scale 4× so a 64×64 grid is 256×256
+    # Left pane: grid at GRID_CELL_SCALE -- 64x64 grid becomes
+    # GRID_PANE_W x GRID_PANE_H pixels (default 512x512).
     grid_img = grid_to_image(grid, scale=GRID_CELL_SCALE)
-    # Letterbox if grid is smaller than 64×64 (e.g. 8×8 in tests)
-    if grid_img.size != (PANEL_W, PANEL_H):
-        framed = Image.new("RGB", (PANEL_W, PANEL_H), color=BG_COLOR)
-        ox = (PANEL_W - grid_img.size[0]) // 2
-        oy = (PANEL_H - grid_img.size[1]) // 2
+    # Letterbox if grid is smaller than 64x64 (e.g. 8x8 in tests)
+    if grid_img.size != (GRID_PANE_W, GRID_PANE_H):
+        framed = Image.new("RGB", (GRID_PANE_W, GRID_PANE_H), color=BG_COLOR)
+        ox = (GRID_PANE_W - grid_img.size[0]) // 2
+        oy = (GRID_PANE_H - grid_img.size[1]) // 2
         framed.paste(grid_img, (max(ox, 0), max(oy, 0)))
         grid_img = framed
     canvas.paste(grid_img, (0, HEADER_H))
@@ -188,7 +192,7 @@ def compose_step_image_v32(
         verdict, fill=match_color,
     )
 
-    canvas.paste(panel, (PANEL_W, HEADER_H))
+    canvas.paste(panel, (GRID_PANE_W, HEADER_H))
     return canvas
 
 
