@@ -58,6 +58,81 @@ def _is_goal_sentinel(value: Any) -> bool:
     return str(value).strip().lower() in _GOAL_SENTINELS
 
 
+# R6: action-described "goals" are misclassified Reflection outputs.
+# A goal MUST describe a target state ("reach the top edge", "match red dots
+# to red targets"), NOT an action's effect ("ACTION1 should move up").
+# Pattern caught: starts with "ACTION" OR contains "should move/advance/click".
+import re as _re   # local alias so module top doesn't reorder imports
+_ACTION_PREFIX_RE = _re.compile(r"^\s*action[1-7]\b", _re.IGNORECASE)
+_ACTION_VERB_PATTERNS = (
+    "should move", "should advance", "should click", "should push",
+    "should be tried", "should be used",
+)
+
+
+def _is_action_described_goal(value: Any) -> bool:
+    """True if the candidate goal looks like an action description (R6)."""
+    if value is None:
+        return False
+    s = str(value).strip()
+    if not s:
+        return False
+    if _ACTION_PREFIX_RE.match(s):
+        return True
+    low = s.lower()
+    return any(pat in low for pat in _ACTION_VERB_PATTERNS)
+
+
+# R4: detect rules / failed_strategies that contradict an existing positive
+# action_semantics entry. Reflection sometimes hallucinates "ACTION_X has no
+# effect" right after confirming ACTION_X moves things; without this filter,
+# the action_mask later blocks the working action.
+_ACTION_TOKEN_RE = _re.compile(r"\bACTION([1-7])\b", _re.IGNORECASE)
+_NEGATION_PHRASES = (
+    "no effect", "no observable effect", "ineffective",
+    "never changes", "didn't work", "doesn't work",
+    "did not work", "does not work", "no-op", "no op",
+    # "anywhere in / at" is Reflection's go-to failed_strategy phrasing
+    # (e.g. "ACTION6 anywhere in the right half") -- treat as negation
+    # for R4 consistency with action_mask's regex.
+    "anywhere in", "anywhere at", "anywhere on",
+)
+_POSITIVE_SEMANTIC_HINTS = (
+    "moves", "move", "shifts", "shifted",
+    "advances", "advanced", "rotates", "rotated",
+    "places", "placed", "drops", "dropped",
+    "up", "down", "left", "right",
+    "cells", "cell",
+)
+
+
+def _is_negative_about_action(text: str) -> Optional[str]:
+    """If `text` says some ACTION_X is ineffective, return that action name
+    (e.g. 'ACTION1'). Returns None otherwise."""
+    if not text:
+        return None
+    low = text.lower()
+    if not any(neg in low for neg in _NEGATION_PHRASES):
+        return None
+    m = _ACTION_TOKEN_RE.search(text)
+    if not m:
+        return None
+    return f"ACTION{m.group(1)}"
+
+
+def _has_positive_semantic(action_semantics: dict[str, str], action: str) -> bool:
+    """True if action_semantics[action] looks POSITIVE (mentions a direction
+    or 'moves'). Used by R4 to detect contradictions."""
+    sem = action_semantics.get(action)
+    if not sem:
+        return False
+    low = sem.lower()
+    # If the semantic itself says "no effect", that's NOT positive
+    if any(neg in low for neg in _NEGATION_PHRASES):
+        return False
+    return any(hint in low for hint in _POSITIVE_SEMANTIC_HINTS)
+
+
 def _clip(s: Any, cap: int = _SHORT_TEXT_CAP) -> str:
     if s is None:
         return ""
@@ -188,13 +263,16 @@ class Knowledge:
             if s_str:
                 prospective_failed_lower.add(s_str.lower())
 
-        # goal_hypothesis_update — replace if non-null AND not a sentinel
-        # AND not a failed_strategies cross-pollution.
-        # R1: sentinel filter prevents "unknown" / "none" / etc.
-        # R5: reject when the would-be hypothesis duplicates a failed
-        # strategy (Reflection writing into the wrong field).
+        # goal_hypothesis_update — replace only when it passes all three
+        # quality gates. A goal MUST describe a target state, not a sentinel
+        # ("unknown"), not a failed strategy, and not an action description.
+        # R1: reject sentinel placeholders.
+        # R5: reject failed_strategies cross-pollution.
+        # R6: reject action-described goals ("ACTION_X should ...").
         goal_upd = delta.get("goal_hypothesis_update")
-        if goal_upd is not None and not _is_goal_sentinel(goal_upd):
+        if (goal_upd is not None
+                and not _is_goal_sentinel(goal_upd)
+                and not _is_action_described_goal(goal_upd)):
             candidate = str(goal_upd).strip()
             if candidate.lower() not in prospective_failed_lower:
                 new.goal_hypothesis = _clip(goal_upd)
@@ -204,19 +282,35 @@ class Knowledge:
         if conf_upd is not None:
             new.goal_confidence = _coerce_confidence(conf_upd, fallback=new.goal_confidence)
 
-        # rules_append — append + dedup + cap
+        # rules_append — append + dedup + cap. R4: drop rules that
+        # contradict an existing positive action_semantics entry. Reflection
+        # sometimes hallucinates "ACTION_X has no effect" right after
+        # confirming X works -- this filter prevents the bad rule from
+        # later masking the working action.
         for r in delta.get("rules_append") or []:
             r_clip = _clip(r)
-            if r_clip and r_clip not in new.rules:
-                new.rules.append(r_clip)
+            if not r_clip or r_clip in new.rules:
+                continue
+            contradicted_action = _is_negative_about_action(r_clip)
+            if (contradicted_action
+                    and _has_positive_semantic(new.action_semantics, contradicted_action)):
+                continue   # R4 drop
+            new.rules.append(r_clip)
         if len(new.rules) > _RULES_CAP:
             new.rules = new.rules[-_RULES_CAP:]
 
-        # failed_strategies_append — same pattern, smaller cap
+        # failed_strategies_append — same pattern, smaller cap. R4 also
+        # applies here (a failed_strategy mentioning ACTION_X with negation
+        # phrasing while we have positive action_semantics for X).
         for s in delta.get("failed_strategies_append") or []:
             s_clip = _clip(s)
-            if s_clip and s_clip not in new.failed_strategies:
-                new.failed_strategies.append(s_clip)
+            if not s_clip or s_clip in new.failed_strategies:
+                continue
+            contradicted_action = _is_negative_about_action(s_clip)
+            if (contradicted_action
+                    and _has_positive_semantic(new.action_semantics, contradicted_action)):
+                continue   # R4 drop
+            new.failed_strategies.append(s_clip)
         if len(new.failed_strategies) > _FAILED_CAP:
             new.failed_strategies = new.failed_strategies[-_FAILED_CAP:]
 

@@ -32,6 +32,7 @@ from arc_agent.action_inference import (
     detect_collapse,
     detect_stuck,
 )
+from arc_agent.action_mask import compute_action_mask
 from arc_agent.click_candidates import (
     list_click_candidates,
     pick_default_action6_coords,
@@ -39,6 +40,7 @@ from arc_agent.click_candidates import (
 from arc_agent.knowledge import Knowledge
 from arc_agent.object_aligner import align_objects
 from arc_agent.object_extractor import extract_objects
+from arc_agent.object_relations import compute_relations
 from arc_agent.object_tracker import ObjectMemory
 from arc_agent.observation import available_action_names, latest_grid
 from arc_agent.prompts_v3_2 import ACTION_SYSTEM, build_action_user_prompt
@@ -190,6 +192,23 @@ class ActionAgent:
         if "ACTION6" in legal_names:
             click_cands = list_click_candidates(current_objs, layer_by_id)
 
+        # R7: surface the action mask to the LLM so it doesn't waste picks
+        # on actions the orchestrator will silently replace. Same mask the
+        # orchestrator applies post-choose -- we just show it up-front here.
+        blocked = compute_action_mask(
+            self._state.outcome_log, self._knowledge, legal_names,
+        )
+
+        # Object relations: same-color groups, same-shape groups, closest
+        # pairs, edge clearances. Pure scipy-derived, no LLM. Inserted
+        # between [ACTIVE] and [TEXTURE] in the prompt.
+        relations = compute_relations(
+            current_objs,
+            grid_shape=grid.shape,
+            layer_by_id=layer_by_id,
+            skip_texture=True,
+        )
+
         user_prompt = build_action_user_prompt(
             knowledge=self._knowledge,
             step=self._state.step_count,
@@ -207,6 +226,8 @@ class ActionAgent:
             diversification_hint=diversification,
             stuck_reason=stuck_reason if is_stuck else None,
             click_candidates=click_cands,
+            blocked_actions=blocked,
+            object_relations=relations,
         )
         self._state.last_prompt = ACTION_SYSTEM + "\n\n" + user_prompt
 

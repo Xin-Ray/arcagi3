@@ -234,6 +234,31 @@ def test_apply_mask_empty_mask_passthrough() -> None:
 # ── integration: real-world ar25 trace pattern ────────────────────────────
 
 
+def test_R4_action_with_positive_semantic_immune_to_text_flag() -> None:
+    """Reproduces R4 smoke bug: Reflection wrote 'ACTION1 anywhere in the
+    right half' into failed_strategies despite action_semantics confirming
+    ACTION1 moves UP. compute_action_mask must NOT blacklist ACTION1."""
+    log = OutcomeLog()  # no empirical evidence
+    k = Knowledge.empty("ar25")
+    k.action_semantics["ACTION1"] = "moves an active object UP by 3 cells"
+    k.failed_strategies = ["ACTION1 anywhere in the right half."]
+    k.rules = ["ACTION1 has no effect on any tested coord."]
+
+    mask = compute_action_mask(log, k, ["ACTION1", "ACTION6"])
+    assert "ACTION1" not in mask, (
+        "ACTION1 has confirmed positive semantic; Knowledge text flags "
+        "must not override empirical truth"
+    )
+
+
+def test_R4_action_without_semantic_still_maskable_by_text() -> None:
+    """When no positive action_semantics exists, the text flag still works."""
+    k = Knowledge.empty("ar25")
+    k.failed_strategies = ["ACTION6 anywhere in the right half."]
+    mask = compute_action_mask(OutcomeLog(), k, ["ACTION1", "ACTION6"])
+    assert "ACTION6" in mask
+
+
 def test_ar25_trace_pattern_masks_action6_after_5_noops() -> None:
     """Reproduces the ar25 round-1 stuck pattern: ACTION6 tried 5+ times,
     all no-op; ACTION1 known to move things UP."""

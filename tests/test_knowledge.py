@@ -281,6 +281,146 @@ def test_R5_does_not_block_failed_append() -> None:
     assert k2.goal_hypothesis == ""   # but goal write was blocked
 
 
+# ── R6: action-described goal filter ─────────────────────────────────────
+
+
+def test_R6_rejects_goal_starting_with_action() -> None:
+    """Observed in v3 ar25: Reflection wrote 'ACTION6 should move object
+    obj_002 left by 3 cells' into goal_hypothesis_update. That's an
+    action description, not a target state. R6 drops it."""
+    k = Knowledge.empty("ar25")
+    k.goal_hypothesis = "reach the top edge"
+
+    delta = {"goal_hypothesis_update": "ACTION6 should move object obj_002 left by 3 cells"}
+    k2 = k.merged_with_delta(delta)
+    assert k2.goal_hypothesis == "reach the top edge"
+
+
+def test_R6_rejects_lowercase_action_prefix() -> None:
+    k = Knowledge.empty("ar25")
+    k.goal_hypothesis = "valid prior"
+    delta = {"goal_hypothesis_update": "action4 should move LEFT by 3 cells"}
+    k2 = k.merged_with_delta(delta)
+    assert k2.goal_hypothesis == "valid prior"
+
+
+def test_R6_rejects_should_move_anywhere() -> None:
+    """Even when the goal doesn't start with 'ACTION', 'should move/advance'
+    is a strong signal of action-described intent."""
+    k = Knowledge.empty("ar25")
+    k.goal_hypothesis = "valid prior"
+    delta = {"goal_hypothesis_update": "the player should move to the top-right"}
+    k2 = k.merged_with_delta(delta)
+    # 'should move' caught by pattern
+    assert k2.goal_hypothesis == "valid prior"
+
+
+def test_R6_accepts_state_described_goal() -> None:
+    """Real goals describe target states -- they must pass."""
+    k = Knowledge.empty("ar25")
+    for good in [
+        "reach the top edge of the grid",
+        "match every red dot with a red target",
+        "all yellow objects in the same row",
+        "blue object at position (32, 32)",
+    ]:
+        k2 = k.merged_with_delta({"goal_hypothesis_update": good})
+        assert k2.goal_hypothesis == good, f"R6 false positive on {good!r}"
+
+
+# ── R4: drop rules contradicting positive action_semantics ──────────────
+
+
+def test_R4_drops_negative_rule_when_action_has_positive_semantic() -> None:
+    """Reproduces the smoke run bug: Reflection wrote 'ACTION1 has no
+    effect' AFTER it had already confirmed 'ACTION1 moves UP by 3 cells'
+    in action_semantics. R4 drops the contradicting rule."""
+    k = Knowledge.empty("ar25")
+    k.action_semantics["ACTION1"] = "moves an active object UP by 3 cells"
+
+    delta = {"rules_append": ["ACTION1 has no effect on any tested coord."]}
+    k2 = k.merged_with_delta(delta)
+    assert "ACTION1 has no effect on any tested coord." not in k2.rules
+
+
+def test_R4_drops_negative_failed_strategy_with_positive_semantic() -> None:
+    """Same filter for failed_strategies_append."""
+    k = Knowledge.empty("ar25")
+    k.action_semantics["ACTION3"] = "moves an active object RIGHT by 2 cells"
+
+    delta = {"failed_strategies_append": ["ACTION3 has no effect at any tested coord"]}
+    k2 = k.merged_with_delta(delta)
+    assert all("ACTION3" not in s.upper() or "no effect" not in s.lower()
+               for s in k2.failed_strategies)
+
+
+def test_R4_keeps_rule_when_no_positive_semantic_exists() -> None:
+    """If action_semantics doesn't have ACTION_X, the negative rule is
+    legitimate (no contradiction to detect)."""
+    k = Knowledge.empty("ar25")
+    # No entry for ACTION6
+    delta = {"rules_append": ["ACTION6 has no effect on any tested coord."]}
+    k2 = k.merged_with_delta(delta)
+    assert "ACTION6 has no effect on any tested coord." in k2.rules
+
+
+def test_R4_keeps_rule_about_action_unrelated_to_positive_semantic() -> None:
+    """Positive semantic for ACTION1, negative rule about ACTION6 -> both kept."""
+    k = Knowledge.empty("ar25")
+    k.action_semantics["ACTION1"] = "moves an active object UP by 3 cells"
+
+    delta = {"rules_append": ["ACTION6 has no effect on any tested coord."]}
+    k2 = k.merged_with_delta(delta)
+    assert "ACTION6 has no effect on any tested coord." in k2.rules
+
+
+def test_R4_keeps_non_negative_rule_even_when_action_mentioned() -> None:
+    """A rule that mentions ACTION1 but isn't negative (e.g. observation,
+    co-occurrence pattern) should pass through."""
+    k = Knowledge.empty("ar25")
+    k.action_semantics["ACTION1"] = "moves an active object UP by 3 cells"
+
+    delta = {"rules_append": ["ACTION1 followed by ACTION2 always reaches the top"]}
+    k2 = k.merged_with_delta(delta)
+    assert "ACTION1 followed by ACTION2 always reaches the top" in k2.rules
+
+
+def test_R4_drops_only_when_semantic_is_truly_positive() -> None:
+    """If action_semantics happens to say 'ACTION_X: no effect at (5,5)',
+    that's not POSITIVE, so a 'no effect' rule should pass."""
+    k = Knowledge.empty("ar25")
+    k.action_semantics["ACTION6"] = "no effect at (5,5)"   # negative semantic
+
+    delta = {"rules_append": ["ACTION6 has no effect on any tested coord."]}
+    k2 = k.merged_with_delta(delta)
+    assert "ACTION6 has no effect on any tested coord." in k2.rules
+
+
+def test_R4_handles_same_delta_with_action_semantics_and_contradiction() -> None:
+    """Same delta sets ACTION1 positive AND tries to add 'ACTION1 has no
+    effect' rule. The positive sem applies first; the rule is then dropped."""
+    k = Knowledge.empty("ar25")
+
+    delta = {
+        "action_semantics_update": {"ACTION1": "moves UP 3 cells"},
+        "rules_append": ["ACTION1 has no effect"],
+    }
+    k2 = k.merged_with_delta(delta)
+    assert k2.action_semantics["ACTION1"] == "moves UP 3 cells"
+    assert "ACTION1 has no effect" not in k2.rules
+
+
+def test_R6_does_not_block_action_mention_in_middle() -> None:
+    """A goal that mentions an action name in the middle but isn't an
+    action description should pass (e.g. describing what won't be needed)."""
+    k = Knowledge.empty("ar25")
+    delta = {
+        "goal_hypothesis_update": "match colors without using ACTION6",
+    }
+    k2 = k.merged_with_delta(delta)
+    assert k2.goal_hypothesis == "match colors without using ACTION6"
+
+
 def test_merge_goal_confidence_invalid_keeps_prior() -> None:
     k = Knowledge.empty("ar25")
     k.goal_confidence = "medium"

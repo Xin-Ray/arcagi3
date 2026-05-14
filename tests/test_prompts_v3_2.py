@@ -136,6 +136,63 @@ def test_action_prompt_does_not_have_duplicate_ask() -> None:
     assert p.count("[ASK]") == 1
 
 
+# ── R7: [BLOCKED ACTIONS] block ─────────────────────────────────────────
+
+
+def test_action_prompt_includes_blocked_actions_when_passed() -> None:
+    p = _build_action_prompt(blocked_actions={"ACTION6"})
+    assert "[BLOCKED ACTIONS" in p
+    assert "ACTION6" in p
+    assert "REPLACE" in p.upper() or "replace" in p
+
+
+def test_action_prompt_no_blocked_block_when_set_empty() -> None:
+    p = _build_action_prompt(blocked_actions=set())
+    assert "[BLOCKED ACTIONS" not in p
+
+
+def test_action_prompt_no_blocked_block_when_none() -> None:
+    p = _build_action_prompt(blocked_actions=None)
+    assert "[BLOCKED ACTIONS" not in p
+
+
+def test_action_prompt_blocked_above_v3_blocks() -> None:
+    p = _build_action_prompt(blocked_actions={"ACTION6", "ACTION7"})
+    # BLOCKED should appear before [STATUS] (which is from v3 layer)
+    assert p.index("[BLOCKED ACTIONS") < p.index("[STATUS]")
+
+
+def test_action_prompt_includes_object_relations_block() -> None:
+    """When ObjectRelations is passed, the prompt should include the
+    [OBJECT RELATIONS] block between [ACTIVE] and [TEXTURE]."""
+    from arc_agent.object_relations import ObjectRelations
+    relations = ObjectRelations(
+        same_color_groups={"red": [0, 1, 2]},
+        closest_pairs=[(0, 1, 3.2)],
+    )
+    p = _build_action_prompt(object_relations=relations)
+    assert "[OBJECT RELATIONS]" in p
+    assert "red" in p
+    # Should sit between [ACTIVE] and [TEXTURE]
+    assert p.index("[ACTIVE]") < p.index("[OBJECT RELATIONS]")
+    assert p.index("[OBJECT RELATIONS]") < p.index("[TEXTURE]")
+
+
+def test_action_prompt_no_relations_block_when_none() -> None:
+    p = _build_action_prompt(object_relations=None)
+    assert "[OBJECT RELATIONS]" not in p
+
+
+def test_action_prompt_blocked_sorted_for_determinism() -> None:
+    """Sorted output -> same prompt every step given same mask -> Qwen
+    cache hits + reproducible tests."""
+    p = _build_action_prompt(blocked_actions={"ACTION7", "ACTION6", "ACTION1"})
+    blocked_section = p.split("[BLOCKED ACTIONS")[1].split("[KNOWLEDGE")[0]
+    # ACTION1 should come first (sorted)
+    assert blocked_section.index("ACTION1") < blocked_section.index("ACTION6")
+    assert blocked_section.index("ACTION6") < blocked_section.index("ACTION7")
+
+
 def test_action_prompt_knowledge_appears_above_v3_blocks() -> None:
     k = Knowledge.empty("ar25")
     k.action_semantics = {"ACTION1": "up"}

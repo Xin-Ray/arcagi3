@@ -36,7 +36,7 @@ import re
 from typing import Any, Optional
 
 from arc_agent.action_inference import ALL_ACTIONS, OutcomeLog
-from arc_agent.knowledge import Knowledge
+from arc_agent.knowledge import Knowledge, _has_positive_semantic
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +107,12 @@ def compute_action_mask(
         n_changed = outcome_log.n_changed(action)
         if n_tried >= no_op_threshold and n_changed == 0:
             blocked.add(action)
+            continue
+        # R4 cross-check: never blacklist via Knowledge text when
+        # action_semantics has confirmed the action works. Reflection
+        # writes contradictory failed_strategies entries; OutcomeLog
+        # (which we already consulted above) is the empirical ground truth.
+        if _has_positive_semantic(knowledge.action_semantics, action):
             continue
         # Rule (b): explicit Knowledge flag
         if _action_flagged_in_knowledge(action, blob):

@@ -164,14 +164,21 @@ def build_action_user_prompt(
     diversification_hint: Optional[str] = None,
     stuck_reason: Optional[str] = None,
     click_candidates: Optional[list[Any]] = None,
+    blocked_actions: Optional[set[str]] = None,
+    object_relations: Optional[Any] = None,
 ) -> str:
     """Compose the Action Agent USER prompt.
 
-    Two blocks are prepended above v3's:
+    Three new blocks above v3's:
       - [REFLECTION ALERT]  (only if knowledge.current_alert is non-empty)
+      - [BLOCKED ACTIONS]   (R7; only if blocked_actions is non-empty)
       - [KNOWLEDGE]
     The v3 [ASK] block at the end is replaced with one demanding the
     reasoning + action two-line format.
+
+    `blocked_actions` is the same set the orchestrator computes via
+    `action_mask.compute_action_mask`. Showing it in the prompt lets the
+    LLM avoid wasting picks on actions that will be silently replaced.
     """
     v3_body = build_play_user_prompt(
         step=step, max_steps=max_steps,
@@ -183,6 +190,7 @@ def build_action_user_prompt(
         diversification_hint=diversification_hint,
         stuck_reason=stuck_reason,
         click_candidates=click_candidates,
+        object_relations=object_relations,
     )
 
     # Strip the trailing v3 [ASK] block — we'll append the v3.2 version.
@@ -195,6 +203,16 @@ def build_action_user_prompt(
     blocks: list[str] = []
     if knowledge.current_alert:
         blocks.append("[REFLECTION ALERT]\n" + knowledge.render_alert())
+    if blocked_actions:
+        # Sort for deterministic output; orchestrator will reject these picks
+        sorted_blocked = sorted(blocked_actions)
+        blocks.append(
+            "[BLOCKED ACTIONS - orchestrator will REPLACE these picks]\n"
+            "  " + ", ".join(sorted_blocked) + "\n"
+            "  Picking any of these wastes your turn -- the orchestrator\n"
+            "  will silently substitute an untried or known-good action.\n"
+            "  Choose from the remaining legal actions instead."
+        )
     blocks.append("[KNOWLEDGE - accumulated across rounds]\n" + knowledge.render())
     blocks.append(v3_body_no_ask)
     blocks.append(_ACTION_ASK_BLOCK)
