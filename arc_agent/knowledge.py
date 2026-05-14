@@ -40,6 +40,23 @@ _FAILED_CAP = 5
 _ROUND_HISTORY_CAP = 20
 _SHORT_TEXT_CAP = 200  # per-field char cap to keep prompts bounded
 
+# Reject these literal strings as goal_hypothesis_update. Reflection
+# sometimes writes them despite the SYSTEM prompt forbidding it -- orchestrator
+# enforces here so the bad value never reaches knowledge.goal_hypothesis.
+# Case-insensitive, stripped, exact match. R1 in docs/ref_v3_2_dataflow_zh.md.
+_GOAL_SENTINELS: frozenset[str] = frozenset({
+    "unknown", "none", "n/a", "na", "tbd", "exploring", "?", "",
+    "no idea", "uncertain", "still learning", "to be determined",
+})
+
+
+def _is_goal_sentinel(value: Any) -> bool:
+    """True if `value` is a sentinel like 'unknown' that should be REJECTED
+    as a goal_hypothesis update (kept the existing hypothesis instead)."""
+    if value is None:
+        return True
+    return str(value).strip().lower() in _GOAL_SENTINELS
+
 
 def _clip(s: Any, cap: int = _SHORT_TEXT_CAP) -> str:
     if s is None:
@@ -158,9 +175,11 @@ class Knowledge:
                 if isinstance(k, str) and v is not None:
                     new.action_semantics[k] = _clip(v)
 
-        # goal_hypothesis_update — replace if non-null
+        # goal_hypothesis_update — replace if non-null AND not a sentinel.
+        # R1: sentinel filter prevents "unknown" / "none" / etc. from
+        # polluting Knowledge when Reflection violates the SYSTEM prompt.
         goal_upd = delta.get("goal_hypothesis_update")
-        if goal_upd is not None and str(goal_upd).strip():
+        if goal_upd is not None and not _is_goal_sentinel(goal_upd):
             new.goal_hypothesis = _clip(goal_upd)
 
         # goal_confidence_update — replace if valid

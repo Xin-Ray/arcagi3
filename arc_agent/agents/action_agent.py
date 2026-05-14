@@ -101,6 +101,12 @@ class ActionAgent:
     COLLAPSE_WINDOW = 3
     MAX_ACTIONS_DEFAULT = 80
 
+    # R3 hard rule: when no-op streak or state-revisit count crosses these
+    # thresholds, the orchestrator forces an untried legal action regardless
+    # of what the LLM picked. See docs/ref_v3_2_dataflow_zh.md.
+    STUCK_NO_OP_THRESHOLD = 5
+    STUCK_STATE_REVISIT_THRESHOLD = 5
+
     def __init__(
         self,
         *,
@@ -253,6 +259,43 @@ class ActionAgent:
                     except KeyError:
                         action = None
 
+        # 6b) R3 hard rule: forced exploration on persistent stuck states.
+        # If the last N steps were all no-op OR the agent is revisiting the
+        # same state too often, override the LLM's choice with an untried
+        # legal action (orchestrator-level guard against Qwen-3B ignoring
+        # its own "this is ineffective" reasoning). See R3 in
+        # docs/ref_v3_2_dataflow_zh.md.
+        if action is not None:
+            current_streak = self.no_op_streak()
+            try:
+                current_revisit = self._state.frame_hashes.count(
+                    hash(grid.tobytes())
+                )
+            except Exception:
+                current_revisit = 1
+            stuck = (current_streak >= self.STUCK_NO_OP_THRESHOLD
+                     or current_revisit >= self.STUCK_STATE_REVISIT_THRESHOLD)
+            if stuck:
+                untried = self._state.outcome_log.untried(legal_names)
+                if untried and action.name not in untried:
+                    try:
+                        forced = GameAction[untried[0]]
+                        if forced.is_complex():
+                            forced.set_data({
+                                "x": self._rng.randint(0, 63),
+                                "y": self._rng.randint(0, 63),
+                            })
+                        # Record what got overridden so traces can audit it
+                        self._state.last_response_raw = (
+                            f"{self._state.last_response_raw}\n"
+                            f"[R3 forced_explore: streak={current_streak} "
+                            f"revisit={current_revisit} "
+                            f"chosen={action.name} -> forced={forced.name}]"
+                        )
+                        action = forced
+                    except KeyError:
+                        pass
+
         if action is None:
             self._state.parse_failures += 1
             self._state.last_parse_ok = False
@@ -269,6 +312,10 @@ class ActionAgent:
         return action, reasoning
 
     # ── orchestrator helpers (exposed for step_summary build) ────────────
+
+    def get_outcome_log(self) -> OutcomeLog:
+        """Expose OutcomeLog for orchestrator-level R2 action masking."""
+        return self._state.outcome_log
 
     def no_op_streak(self) -> int:
         streak = 0

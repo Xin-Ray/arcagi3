@@ -46,12 +46,14 @@ import numpy as np  # noqa: E402
 
 from arcengine import GameAction, GameState  # noqa: E402
 
+from arc_agent.action_inference import OutcomeLog, StepOutcome  # noqa: E402
+from arc_agent.action_mask import apply_action_mask, compute_action_mask  # noqa: E402
 from arc_agent.agents.action_agent import ActionAgent  # noqa: E402
 from arc_agent.agents.reflection_agent import ReflectionAgent  # noqa: E402
 from arc_agent.knowledge import Knowledge  # noqa: E402
 from arc_agent.object_aligner import align_objects  # noqa: E402
 from arc_agent.object_extractor import extract_objects  # noqa: E402
-from arc_agent.observation import latest_grid  # noqa: E402
+from arc_agent.observation import available_action_names, latest_grid  # noqa: E402
 from arc_agent.step_summary import (  # noqa: E402
     StepSummary,
     compute_matches_reasoning,
@@ -177,6 +179,18 @@ class _DryRunActionAgent:
         right no_op_streak / recent_step_records on subsequent steps."""
         self._recent.append((action_name, changed, direction))
 
+    def get_outcome_log(self) -> OutcomeLog:
+        """Build an OutcomeLog on demand from the recent-step records so
+        the R2 action mask works in dry-run mode too."""
+        log = OutcomeLog()
+        for i, (act, changed, direction) in enumerate(self._recent):
+            log.record(StepOutcome(
+                step=i, action=act, legal=True,
+                frame_changed=changed, n_active_changed=0,
+                primary_direction=direction,
+            ))
+        return log
+
 
 class _DryRunReflectionAgent:
     """Stand-in for ReflectionAgent when --dry-run is set. Never loads Qwen.
@@ -293,7 +307,17 @@ def run_one_game(
     reflection_agent,
     fps: int = 2,
     save_images: bool = True,
+    seed: int = 42,
 ) -> dict[str, Any]:
+    """Run N rounds of one game.
+
+    R2 hard rule (Knowledge-driven action mask) is applied after every
+    `action_agent.choose()` and before `env.step()`. If the chosen action
+    is masked, it is silently replaced and the trace records what got
+    swapped + why under `orch_override`.
+    """
+    import random as _random_mod
+    _rng = _random_mod.Random(seed)
     out_dir.mkdir(parents=True, exist_ok=True)
     knowledge_history_path = out_dir / "knowledge_history.jsonl"
 
@@ -337,6 +361,40 @@ def run_one_game(
                 print(f"[round {r}] action_agent failed at step {step}: {e}",
                       file=sys.stderr)
                 break
+
+            # 1b) R2 hard rule: Knowledge-driven action mask
+            #   The Action Agent sometimes ignores failed_strategies / rules
+            #   and re-picks an action Reflection has already marked dead.
+            #   Orchestrator enforces here -- prompt is advisory, this is law.
+            orch_override_reason: str = ""
+            chosen_action_name = action.name
+            try:
+                legal_names = available_action_names(latest)
+                outcome_log_view = (
+                    action_agent.get_outcome_log()
+                    if hasattr(action_agent, "get_outcome_log") else None
+                )
+                if outcome_log_view is not None:
+                    mask = compute_action_mask(outcome_log_view, knowledge, legal_names)
+                    if mask:
+                        new_name, was_replaced, reason = apply_action_mask(
+                            chosen_action_name, mask, legal_names,
+                            outcome_log_view, knowledge, _rng,
+                        )
+                        if was_replaced and new_name != chosen_action_name:
+                            action = GameAction[new_name]
+                            if action.is_complex():
+                                action.set_data({
+                                    "x": _rng.randint(0, 63),
+                                    "y": _rng.randint(0, 63),
+                                })
+                            orch_override_reason = reason
+                            action.reasoning = f"R2_mask: {reason}"
+                            print(f"[round {r} step {step}] R2_mask: {reason}",
+                                  file=sys.stderr)
+            except Exception as e:
+                print(f"[round {r} step {step}] R2_mask error: {e}",
+                      file=sys.stderr)
 
             # 2) env.step
             grid_before = prev_grid
@@ -435,6 +493,7 @@ def run_one_game(
                 "action": action.name,
                 "action_coords": coords,
                 "reasoning": reasoning,
+                "orch_override": orch_override_reason,
                 "frame_changed": changed,
                 "primary_direction": primary_dir,
                 "primary_distance": primary_dist,
@@ -597,6 +656,7 @@ def main() -> None:
             out_dir=out_dir, action_agent=action_agent,
             reflection_agent=reflection_agent, fps=args.fps,
             save_images=not args.no_images,
+            seed=args.seed,
         )
     else:
         _check_key()
@@ -616,6 +676,7 @@ def main() -> None:
                 out_dir=out_dir, action_agent=action_agent,
                 reflection_agent=reflection_agent, fps=args.fps,
                 save_images=not args.no_images,
+                seed=args.seed,
             )
         finally:
             try:
@@ -637,7 +698,7 @@ def main() -> None:
 def _dry_run_loop(
     *, game_id_full: str, n_rounds: int, max_actions: int,
     out_dir: Path, action_agent, reflection_agent,
-    fps: int, save_images: bool,
+    fps: int, save_images: bool, seed: int = 42,
 ) -> dict[str, Any]:
     """Plumbing test: simulate `arc.make/env.reset/env.step` with a tiny
     deterministic stub. Exercises every code path in run_one_game without
@@ -682,7 +743,7 @@ def _dry_run_loop(
         n_rounds=n_rounds, max_actions=max_actions,
         out_dir=out_dir, action_agent=action_agent,
         reflection_agent=reflection_agent, fps=fps,
-        save_images=save_images,
+        save_images=save_images, seed=seed,
     )
 
 

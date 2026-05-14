@@ -143,6 +143,47 @@ def test_merge_goal_hypothesis_replaces() -> None:
     assert k2.goal_confidence == "medium"
 
 
+# ── R1: goal sentinel filter ──────────────────────────────────────────────
+
+
+def test_merge_rejects_unknown_string_as_goal() -> None:
+    """Reflection sometimes writes the literal string 'unknown' despite the
+    SYSTEM prompt telling it to use null. Knowledge must filter it out."""
+    k = Knowledge.empty("ar25")
+    k.goal_hypothesis = "reach top"   # something real already there
+    delta = {"goal_hypothesis_update": "unknown"}
+    k2 = k.merged_with_delta(delta)
+    assert k2.goal_hypothesis == "reach top"  # unchanged
+
+
+def test_merge_rejects_various_sentinels() -> None:
+    """All known sentinel strings get filtered."""
+    k = Knowledge.empty("ar25")
+    k.goal_hypothesis = "stable hypothesis"
+    for sentinel in ("unknown", "None", "N/A", "n/a", "TBD", "exploring",
+                     "?", "", "  unknown  ", "no idea", "uncertain"):
+        k2 = k.merged_with_delta({"goal_hypothesis_update": sentinel})
+        assert k2.goal_hypothesis == "stable hypothesis", (
+            f"sentinel {sentinel!r} leaked through")
+
+
+def test_merge_accepts_real_hypothesis() -> None:
+    """Non-sentinel strings should still be accepted."""
+    k = Knowledge.empty("ar25")
+    k2 = k.merged_with_delta(
+        {"goal_hypothesis_update": "reach the red dot at top"}
+    )
+    assert k2.goal_hypothesis == "reach the red dot at top"
+
+
+def test_merge_filters_sentinel_when_no_prior_hypothesis() -> None:
+    """Empty -> 'unknown' update should leave it empty (not become 'unknown')."""
+    k = Knowledge.empty("ar25")
+    assert k.goal_hypothesis == ""
+    k2 = k.merged_with_delta({"goal_hypothesis_update": "unknown"})
+    assert k2.goal_hypothesis == ""
+
+
 def test_merge_goal_confidence_invalid_keeps_prior() -> None:
     k = Knowledge.empty("ar25")
     k.goal_confidence = "medium"

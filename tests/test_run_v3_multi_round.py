@@ -146,6 +146,92 @@ def test_report_md_includes_per_round_table(tmp_path) -> None:
     assert "Final knowledge" in report
 
 
+# ── R2 hard rule: action mask integration ────────────────────────────────
+
+
+def test_R2_mask_records_orch_override_in_trace(tmp_path) -> None:
+    """When the action mask replaces a chosen action, the orchestrator
+    must record `orch_override` (non-empty string) in trace.jsonl."""
+    import json
+
+    # Build agents that ALWAYS pick ACTION1, and a knowledge state that
+    # already flags ACTION1 as dead -> mask will replace it.
+    class _AlwaysACTION1:
+        def __init__(self):
+            self._state = type("S", (), {"last_prompt": "", "last_response_raw": "",
+                                         "last_parse_ok": True, "last_reasoning": "",
+                                         "last_chosen_action": None,
+                                         "step_count": 0, "parse_failures": 0})()
+            self._step = 0
+            self._frame_hashes: list = []
+            self._recent: list = []
+            self._knowledge = None
+        def attach_knowledge(self, k):
+            self._knowledge = k
+            # Hard-flag ACTION1 so the mask hits immediately
+            from arc_agent.knowledge import Knowledge
+            k.rules = ["ACTION1 has no effect on any tested coord."]
+        def reset_episode_state(self, *, knowledge=None):
+            self._step = 0; self._recent = []; self._frame_hashes = []
+            if knowledge is not None:
+                self.attach_knowledge(knowledge)
+        def choose(self, latest, history=None):
+            from arcengine import GameAction, GameState
+            self._step += 1
+            self._state.step_count = self._step
+            return GameAction.ACTION1, "(stub) always ACTION1"
+        def no_op_streak(self): return 0
+        def state_revisit_count(self, _): return 1
+        def recent_step_records(self, n=3): return []
+        def record_outcome(self, *a, **kw): self._recent.append(a)
+        def get_outcome_log(self):
+            return run_module.OutcomeLog()   # empty -- only Knowledge flag triggers mask
+
+    action_agent = _AlwaysACTION1()
+    reflection_agent = run_module._DryRunReflectionAgent()
+
+    run_module._dry_run_loop(
+        game_id_full="ar25", n_rounds=1, max_actions=3,
+        out_dir=tmp_path,
+        action_agent=action_agent,
+        reflection_agent=reflection_agent,
+        fps=2, save_images=False, seed=0,
+    )
+
+    trace = [json.loads(l) for l in
+             (tmp_path / "round_00" / "trace.jsonl").read_text().splitlines()]
+    # First step: knowledge starts empty -> not flagged -> mask empty -> no override.
+    # After attach_knowledge, knowledge.rules has the flag, so step 1 onwards
+    # should mask ACTION1 and replace it.
+    overrides = [r.get("orch_override", "") for r in trace]
+    # Mask might not fire on step 0 if Knowledge.rules check is post-attach;
+    # at least one of the subsequent steps must show an override.
+    assert any(o for o in overrides), (
+        f"R2 mask should fire at least once but orch_override stayed empty: {overrides}"
+    )
+
+
+def test_R2_mask_does_not_fire_without_flag(tmp_path) -> None:
+    """Baseline: dry-run agents + empty Knowledge -> no override."""
+    import json
+    action_agent = run_module._DryRunActionAgent(seed=0)
+    reflection_agent = run_module._DryRunReflectionAgent()
+    run_module._dry_run_loop(
+        game_id_full="ar25", n_rounds=1, max_actions=3,
+        out_dir=tmp_path,
+        action_agent=action_agent,
+        reflection_agent=reflection_agent,
+        fps=2, save_images=False, seed=0,
+    )
+    trace = [json.loads(l) for l in
+             (tmp_path / "round_00" / "trace.jsonl").read_text().splitlines()]
+    overrides = [r.get("orch_override", "") for r in trace]
+    # No Knowledge flags + < 5 attempts per action -> no mask -> all empty
+    assert all(not o for o in overrides), (
+        f"R2 mask should NOT fire without flag or threshold but did: {overrides}"
+    )
+
+
 def test_no_images_flag_skips_pngs(tmp_path) -> None:
     action_agent = run_module._DryRunActionAgent(seed=0)
     reflection_agent = run_module._DryRunReflectionAgent()

@@ -249,6 +249,104 @@ def test_anti_collapse_overrides_repeated_action() -> None:
     assert a4.name != "ACTION1"
 
 
+# ── R3: stuck-state forced exploration ────────────────────────────────────
+
+
+def test_R3_forces_untried_when_stuck() -> None:
+    """When stuck (no-op streak OR state-revisit crosses threshold) and an
+    untried legal action exists, R3 overrides the LLM choice.
+
+    Setup: 5 same-grid calls all picking ACTION1 (or ACTION3 alternating).
+    By call 5, state_revisit_count == 5 -> stuck. ACTION5 still untried ->
+    R3 picks it.
+    """
+    same = np.zeros((8, 8), dtype=int)
+    # Alternate to keep anti-collapse off; only ACTION1 / ACTION3 picked
+    replies = ["reasoning: r\naction: ACTION1",
+               "reasoning: r\naction: ACTION3"] * 4
+    bb = _FakeBackbone(replies)
+    agent = ActionAgent(backbone=bb, seed=0)
+
+    legal = [1, 3, 5]
+    # First 4 calls: revisit goes 1->2->3->4, all below threshold; ACTION1/A3 picked
+    for _ in range(4):
+        a, _ = agent.choose(_frame(available=legal, grid=same), history=[])
+        # Sanity: not forced yet
+        assert a.name in ("ACTION1", "ACTION3"), f"early force: {a.name}"
+
+    # 5th call: revisit reaches 5 -> R3 fires -> ACTION5 forced
+    action, _ = agent.choose(_frame(available=legal, grid=same), history=[])
+    assert action.name == "ACTION5", (
+        f"R3 should force ACTION5 on stuck state but got {action.name}"
+    )
+
+
+def test_R3_skipped_when_untried_already_includes_chosen() -> None:
+    """If LLM happens to pick an untried action while stuck, R3 leaves it
+    alone (no need to override what's already untried)."""
+    same = np.zeros((8, 8), dtype=int)
+    # 5 calls of ACTION1 -> stuck.
+    # 6th call: LLM picks ACTION5 (untried at this point). R3 must pass through.
+    replies = ["reasoning: r\naction: ACTION1"] * 5 + [
+        "reasoning: r\naction: ACTION5",
+    ]
+    bb = _FakeBackbone(replies)
+    agent = ActionAgent(backbone=bb, seed=0)
+    legal = [1, 5]
+
+    for _ in range(5):
+        agent.choose(_frame(available=legal, grid=same), history=[])
+    action, _ = agent.choose(_frame(available=legal, grid=same), history=[])
+    assert action.name == "ACTION5"
+    # last_response_raw should NOT contain the override marker
+    assert "R3 forced_explore" not in agent._state.last_response_raw
+
+
+def test_R3_does_not_fire_when_no_untried() -> None:
+    """If every legal action has been tried, R3 should NOT force anything --
+    just let the LLM's choice through (orchestrator R2 mask is the fallback)."""
+    same = np.zeros((8, 8), dtype=int)
+    bb = _FakeBackbone(["reasoning: r\naction: ACTION1"] * 10)
+    agent = ActionAgent(backbone=bb, seed=0)
+    legal = [1]   # only one legal action ever
+
+    for _ in range(7):
+        agent.choose(_frame(available=legal, grid=same), history=[])
+    # Streak is high but there's nothing to force-pick -> action stays ACTION1
+    action, _ = agent.choose(_frame(available=legal, grid=same), history=[])
+    assert action.name == "ACTION1"
+
+
+def test_R3_records_override_in_last_response_raw() -> None:
+    """Override should be auditable from the trace (last_response_raw)."""
+    same = np.zeros((8, 8), dtype=int)
+    replies = ["reasoning: r\naction: ACTION1",
+               "reasoning: r\naction: ACTION3"] * 4
+    bb = _FakeBackbone(replies)
+    agent = ActionAgent(backbone=bb, seed=0)
+    legal = [1, 3, 5]
+
+    # Run until R3 fires (revisit threshold = 5 reached on call 5)
+    for _ in range(5):
+        agent.choose(_frame(available=legal, grid=same), history=[])
+    assert "R3 forced_explore" in agent._state.last_response_raw, (
+        f"R3 marker missing; last_response_raw={agent._state.last_response_raw!r}"
+    )
+
+
+def test_R3_skipped_when_streak_below_threshold() -> None:
+    """One no-op should NOT trigger R3."""
+    same = np.zeros((8, 8), dtype=int)
+    bb = _FakeBackbone(["reasoning: r\naction: ACTION1",
+                        "reasoning: r\naction: ACTION1"])
+    agent = ActionAgent(backbone=bb, seed=0)
+    agent.choose(_frame(available=[1, 2], grid=same), history=[])
+    action, _ = agent.choose(_frame(available=[1, 2], grid=same), history=[])
+    # Streak is at most 1 here -- under threshold -- ACTION1 should pass through
+    assert action.name == "ACTION1"
+    assert "R3 forced_explore" not in agent._state.last_response_raw
+
+
 # ── max_new_tokens / temperature passthrough ──────────────────────────────
 
 
