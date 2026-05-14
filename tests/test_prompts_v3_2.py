@@ -139,27 +139,29 @@ def test_action_prompt_does_not_have_duplicate_ask() -> None:
 # ── R7: [BLOCKED ACTIONS] block ─────────────────────────────────────────
 
 
-def test_action_prompt_includes_blocked_actions_when_passed() -> None:
+def test_action_prompt_includes_lowpriority_block_when_passed() -> None:
     p = _build_action_prompt(blocked_actions={"ACTION6"})
-    assert "[BLOCKED ACTIONS" in p
+    assert "[LOW-PRIORITY ACTIONS" in p
     assert "ACTION6" in p
-    assert "REPLACE" in p.upper() or "replace" in p
+    # Wording shifted from REPLACE -> NOT blocked / consider others
+    assert "NOT blocked" in p or "not blocked" in p
+    assert "REPLACE" not in p.upper().replace("PRIORITY", "")  # no replacement language
 
 
-def test_action_prompt_no_blocked_block_when_set_empty() -> None:
+def test_action_prompt_no_lowpriority_block_when_set_empty() -> None:
     p = _build_action_prompt(blocked_actions=set())
-    assert "[BLOCKED ACTIONS" not in p
+    assert "[LOW-PRIORITY ACTIONS" not in p
 
 
-def test_action_prompt_no_blocked_block_when_none() -> None:
+def test_action_prompt_no_lowpriority_block_when_none() -> None:
     p = _build_action_prompt(blocked_actions=None)
-    assert "[BLOCKED ACTIONS" not in p
+    assert "[LOW-PRIORITY ACTIONS" not in p
 
 
-def test_action_prompt_blocked_above_v3_blocks() -> None:
+def test_action_prompt_lowpriority_above_v3_blocks() -> None:
     p = _build_action_prompt(blocked_actions={"ACTION6", "ACTION7"})
-    # BLOCKED should appear before [STATUS] (which is from v3 layer)
-    assert p.index("[BLOCKED ACTIONS") < p.index("[STATUS]")
+    # Block should appear before [STATUS] (which is from v3 layer)
+    assert p.index("[LOW-PRIORITY ACTIONS") < p.index("[STATUS]")
 
 
 def test_action_prompt_includes_object_relations_block() -> None:
@@ -183,14 +185,13 @@ def test_action_prompt_no_relations_block_when_none() -> None:
     assert "[OBJECT RELATIONS]" not in p
 
 
-def test_action_prompt_blocked_sorted_for_determinism() -> None:
+def test_action_prompt_lowpriority_sorted_for_determinism() -> None:
     """Sorted output -> same prompt every step given same mask -> Qwen
     cache hits + reproducible tests."""
     p = _build_action_prompt(blocked_actions={"ACTION7", "ACTION6", "ACTION1"})
-    blocked_section = p.split("[BLOCKED ACTIONS")[1].split("[KNOWLEDGE")[0]
-    # ACTION1 should come first (sorted)
-    assert blocked_section.index("ACTION1") < blocked_section.index("ACTION6")
-    assert blocked_section.index("ACTION6") < blocked_section.index("ACTION7")
+    block = p.split("[LOW-PRIORITY ACTIONS")[1].split("[KNOWLEDGE")[0]
+    assert block.index("ACTION1") < block.index("ACTION6")
+    assert block.index("ACTION6") < block.index("ACTION7")
 
 
 def test_action_prompt_knowledge_appears_above_v3_blocks() -> None:
@@ -260,6 +261,85 @@ def test_reflection_prompt_ask_demands_all_six_fields() -> None:
     # ASK block can be short; the SYSTEM lists the fields. Just check that
     # ASK at least demands JSON.
     assert "json" in ask
+
+
+def test_reflection_prompt_renders_status_when_passed() -> None:
+    """A (2026-05-14): Reflection USER prompt should include [STATUS]
+    when env-context kwargs are supplied."""
+    p = build_reflection_user_prompt(
+        knowledge=Knowledge.empty("ar25"),
+        step_summary=_step_summary(),
+        step=12, max_steps=80, level=1, total_levels=4,
+        state_name="NOT_FINISHED",
+        legal_actions=["ACTION1", "ACTION2"],
+    )
+    assert "[STATUS]" in p
+    assert "12 / 80" in p
+    assert "1 / 4" in p
+    assert "NOT_FINISHED" in p
+
+
+def test_reflection_prompt_renders_object_relations_when_passed() -> None:
+    """A: Reflection now sees [OBJECT RELATIONS] so it can infer goals
+    from object configuration (same-color groups etc)."""
+    from arc_agent.object_relations import ObjectRelations
+    relations = ObjectRelations(
+        same_color_groups={"red": [0, 1]},
+        same_shape_groups={"2x2_size4": [0, 1]},
+    )
+    p = build_reflection_user_prompt(
+        knowledge=Knowledge.empty("ar25"),
+        step_summary=_step_summary(),
+        object_relations=relations,
+    )
+    assert "[OBJECT RELATIONS]" in p
+    assert "red" in p
+    assert "2x2_size4" in p
+
+
+def test_reflection_prompt_renders_action_effects_when_outcome_log_passed() -> None:
+    """A: Reflection now sees per-action OutcomeLog stats so its rules
+    are grounded in empirical truth."""
+    from arc_agent.action_inference import OutcomeLog, StepOutcome
+    log = OutcomeLog()
+    for i in range(3):
+        log.record(StepOutcome(step=i, action="ACTION1", legal=True,
+                               frame_changed=True, n_active_changed=1,
+                               primary_direction="UP", primary_distance=3))
+    p = build_reflection_user_prompt(
+        knowledge=Knowledge.empty("ar25"),
+        step_summary=_step_summary(),
+        outcome_log=log,
+        legal_actions=["ACTION1", "ACTION2"],
+    )
+    assert "[ACTION effects observed]" in p
+    assert "ACTION1" in p
+
+
+def test_reflection_prompt_ask_block_guides_goal_inference() -> None:
+    """ASK block should give concrete examples of state-described goals
+    and discourage 'unknown' / 'ACTION_X should ...' style outputs."""
+    p = build_reflection_user_prompt(
+        knowledge=Knowledge.empty("ar25"),
+        step_summary=_step_summary(),
+    )
+    ask = p.split("[ASK]")[-1].lower()
+    assert "win state" in ask
+    assert "same-color" in ask or "color groups" in ask
+    # Forbids the bad outputs we've seen
+    assert "action_x should" in ask or "action_x" in ask
+
+
+def test_reflection_prompt_backward_compatible_without_state_kwargs() -> None:
+    """A: legacy callers passing only knowledge+step_summary still work."""
+    p = build_reflection_user_prompt(
+        knowledge=Knowledge.empty("ar25"),
+        step_summary=_step_summary(),
+    )
+    assert "[CURRENT KNOWLEDGE" in p
+    assert "[STATUS]" not in p          # no env context, no STATUS block
+    assert "[OBJECT RELATIONS]" not in p
+    assert "[ACTION effects observed]" not in p
 
 
 def test_reflection_prompt_renders_existing_knowledge() -> None:

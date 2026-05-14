@@ -53,6 +53,7 @@ from arc_agent.agents.reflection_agent import ReflectionAgent  # noqa: E402
 from arc_agent.knowledge import Knowledge  # noqa: E402
 from arc_agent.object_aligner import align_objects  # noqa: E402
 from arc_agent.object_extractor import extract_objects  # noqa: E402
+from arc_agent.object_relations import compute_relations  # noqa: E402
 from arc_agent.observation import available_action_names, latest_grid  # noqa: E402
 from arc_agent.step_summary import (  # noqa: E402
     StepSummary,
@@ -206,7 +207,9 @@ class _DryRunReflectionAgent:
     def reset(self) -> None:
         self._state.call_count = 0
 
-    def reflect_after_step(self, *, knowledge, step_summary):
+    def reflect_after_step(self, *, knowledge, step_summary, **_state_ctx):
+        # Accept (and ignore) the v3.2-A full state context kwargs so the
+        # orchestrator can call the same surface as the real ReflectionAgent.
         delta = {
             "action_semantics_update": {},
             "current_alert": "",
@@ -292,6 +295,55 @@ def _safe_grid(frame) -> Optional[np.ndarray]:
         return None
 
 
+def _perceive_for_reflection(grid: Optional[np.ndarray]):
+    """Re-run perception on the post-step grid so Reflection sees the
+    same object configuration the Action Agent sees on the NEXT step.
+
+    Returns (frame_objects, object_relations) -- both None if `grid` is
+    None or perception fails. Cheap (~ms per call); no LLM.
+    """
+    if grid is None:
+        return None, None
+    try:
+        objs = extract_objects(grid)
+        # No multi-frame history available here, so we don't filter texture.
+        # Reflection seeing all extracted objects is fine -- texture cells
+        # are usually obvious from color/size.
+        relations = compute_relations(
+            objs, grid_shape=grid.shape,
+            layer_by_id=None, skip_texture=False,
+        )
+        return objs, relations
+    except Exception:
+        return None, None
+
+
+# C: orchestrator-level stuck alert generator. Deterministic (no LLM),
+# fires when state_revisit_count or no_op_streak crosses threshold.
+STUCK_ALERT_THRESHOLD = 5
+
+
+def _build_stuck_alert(
+    *, no_op_streak: int, state_revisit: int,
+    last_picks: list[str],
+) -> str:
+    """If stuck, return a specific actionable alert string. Otherwise ''."""
+    if no_op_streak < STUCK_ALERT_THRESHOLD and state_revisit < STUCK_ALERT_THRESHOLD:
+        return ""
+    if not last_picks:
+        return (f"Stuck: state_revisit={state_revisit} no_op_streak={no_op_streak}. "
+                "Try a different action category.")
+    # Find most common recent action -- the likely culprit
+    from collections import Counter
+    counts = Counter(last_picks)
+    culprit, n = counts.most_common(1)[0]
+    others = ", ".join(sorted(set(f"ACTION{i}" for i in range(1, 8))
+                              - {culprit}))
+    return (f"Stuck for {max(no_op_streak, state_revisit)} steps; "
+            f"last picks were mostly {culprit} ({n} times). "
+            f"Pick a non-{culprit} action like one of: {others}.")
+
+
 # ─── main loop ──────────────────────────────────────────────────────────
 
 
@@ -348,7 +400,10 @@ def run_one_game(
         n_parse_failures = 0
 
         for step in range(max_actions):
-            if latest.state == GameState.WIN:
+            # D: natural termination -- end round when game says it's over,
+            # not on artificial step caps. max_actions stays as safety upper
+            # bound but is usually not hit before the game ends.
+            if latest.state in (GameState.WIN, GameState.GAME_OVER):
                 break
 
             alert_active = knowledge.current_alert
@@ -362,39 +417,13 @@ def run_one_game(
                       file=sys.stderr)
                 break
 
-            # 1b) R2 hard rule: Knowledge-driven action mask
-            #   The Action Agent sometimes ignores failed_strategies / rules
-            #   and re-picks an action Reflection has already marked dead.
-            #   Orchestrator enforces here -- prompt is advisory, this is law.
+            # 1b) B: mask is now ADVISORY ONLY -- the LOW-PRIORITY ACTIONS
+            # block in the Action prompt (via R7) already informs the LLM.
+            # We DO NOT replace the LLM's choice here -- that turned out to
+            # over-fire in stateful games (e.g. ar25 ACTION1 stops working
+            # at ceiling but resumes after the player moves away). Decision
+            # power stays with the LLM; orchestrator only annotates.
             orch_override_reason: str = ""
-            chosen_action_name = action.name
-            try:
-                legal_names = available_action_names(latest)
-                outcome_log_view = (
-                    action_agent.get_outcome_log()
-                    if hasattr(action_agent, "get_outcome_log") else None
-                )
-                if outcome_log_view is not None:
-                    mask = compute_action_mask(outcome_log_view, knowledge, legal_names)
-                    if mask:
-                        new_name, was_replaced, reason = apply_action_mask(
-                            chosen_action_name, mask, legal_names,
-                            outcome_log_view, knowledge, _rng,
-                        )
-                        if was_replaced and new_name != chosen_action_name:
-                            action = GameAction[new_name]
-                            if action.is_complex():
-                                action.set_data({
-                                    "x": _rng.randint(0, 63),
-                                    "y": _rng.randint(0, 63),
-                                })
-                            orch_override_reason = reason
-                            action.reasoning = f"R2_mask: {reason}"
-                            print(f"[round {r} step {step}] R2_mask: {reason}",
-                                  file=sys.stderr)
-            except Exception as e:
-                print(f"[round {r} step {step}] R2_mask error: {e}",
-                      file=sys.stderr)
 
             # 2) env.step
             grid_before = prev_grid
@@ -456,10 +485,28 @@ def run_one_game(
                 recent_steps=recent,
             )
 
-            # 4) Reflection Agent
+            # 4) Reflection Agent — now sees full state context so it can
+            # actually infer goals from object configuration (A change).
+            refl_frame_objs, refl_relations = _perceive_for_reflection(grid_after)
+            refl_outcome_log = (
+                action_agent.get_outcome_log()
+                if hasattr(action_agent, "get_outcome_log") else None
+            )
+            refl_object_memory = getattr(
+                getattr(action_agent, "_state", None), "object_memory", None
+            )
             try:
                 delta, refl_raw = reflection_agent.reflect_after_step(
                     knowledge=knowledge, step_summary=summary,
+                    step=step, max_steps=max_actions,
+                    level=latest.levels_completed + 1,
+                    total_levels=latest.win_levels,
+                    state_name=latest.state.name,
+                    legal_actions=available_action_names(latest),
+                    frame_objects=refl_frame_objs,
+                    object_memory=refl_object_memory,
+                    outcome_log=refl_outcome_log,
+                    object_relations=refl_relations,
                 )
             except Exception as e:
                 print(f"[round {r}] reflection failed at step {step}: {e}",
@@ -467,6 +514,23 @@ def run_one_game(
                 delta, refl_raw = {}, ""
 
             knowledge = knowledge.merged_with_delta(delta)
+
+            # C: orchestrator-level deterministic stuck alert. Overwrites
+            # current_alert when the agent is clearly looping (state revisit
+            # or no_op_streak threshold). Bypasses Reflection LLM for this
+            # specific signal so Action Agent always gets actionable info.
+            last_picks = [a for (a, _changed, _dir)
+                          in action_agent.recent_step_records(n=5)] \
+                if hasattr(action_agent, "recent_step_records") else []
+            stuck_alert = _build_stuck_alert(
+                no_op_streak=no_op_streak,
+                state_revisit=state_revisit,
+                last_picks=last_picks,
+            )
+            if stuck_alert:
+                # Overwrite (we have higher priority than Reflection's alert
+                # for this concrete signal)
+                knowledge.current_alert = stuck_alert
 
             # 5) viz
             if save_images and grid_after is not None:
@@ -609,7 +673,13 @@ def main() -> None:
                         help="Game id prefix (default: ar25). Resolved against "
                              "SDK get_environments() to the full id.")
     parser.add_argument("--rounds", type=int, default=3)
-    parser.add_argument("--max-actions", type=int, default=80)
+    parser.add_argument(
+        "--max-actions", type=int, default=500,
+        help="Safety upper bound for steps per round. The round actually "
+             "ends on WIN or GAME_OVER (D natural-termination). Raised from "
+             "80 (the old human-step budget) to 500 so the game gets to "
+             "drive the cadence rather than the orchestrator.",
+    )
     parser.add_argument("--fps", type=int, default=2)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--output", default="",

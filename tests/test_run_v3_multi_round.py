@@ -149,65 +149,25 @@ def test_report_md_includes_per_round_table(tmp_path) -> None:
 # ── R2 hard rule: action mask integration ────────────────────────────────
 
 
-def test_R2_mask_records_orch_override_in_trace(tmp_path) -> None:
-    """When the action mask replaces a chosen action, the orchestrator
-    must record `orch_override` (non-empty string) in trace.jsonl."""
+def test_B_orch_override_never_fires_now(tmp_path) -> None:
+    """B (2026-05-14): R2 mask replacement was removed. Orchestrator no
+    longer overrides the LLM choice; orch_override stays empty in every
+    row of trace.jsonl regardless of Knowledge flags or OutcomeLog state."""
     import json
-
-    # Build agents that ALWAYS pick ACTION1, and a knowledge state that
-    # already flags ACTION1 as dead -> mask will replace it.
-    class _AlwaysACTION1:
-        def __init__(self):
-            self._state = type("S", (), {"last_prompt": "", "last_response_raw": "",
-                                         "last_parse_ok": True, "last_reasoning": "",
-                                         "last_chosen_action": None,
-                                         "step_count": 0, "parse_failures": 0})()
-            self._step = 0
-            self._frame_hashes: list = []
-            self._recent: list = []
-            self._knowledge = None
-        def attach_knowledge(self, k):
-            self._knowledge = k
-            # Hard-flag ACTION1 so the mask hits immediately
-            from arc_agent.knowledge import Knowledge
-            k.rules = ["ACTION1 has no effect on any tested coord."]
-        def reset_episode_state(self, *, knowledge=None):
-            self._step = 0; self._recent = []; self._frame_hashes = []
-            if knowledge is not None:
-                self.attach_knowledge(knowledge)
-        def choose(self, latest, history=None):
-            from arcengine import GameAction, GameState
-            self._step += 1
-            self._state.step_count = self._step
-            return GameAction.ACTION1, "(stub) always ACTION1"
-        def no_op_streak(self): return 0
-        def state_revisit_count(self, _): return 1
-        def recent_step_records(self, n=3): return []
-        def record_outcome(self, *a, **kw): self._recent.append(a)
-        def get_outcome_log(self):
-            return run_module.OutcomeLog()   # empty -- only Knowledge flag triggers mask
-
-    action_agent = _AlwaysACTION1()
+    action_agent = run_module._DryRunActionAgent(seed=0)
     reflection_agent = run_module._DryRunReflectionAgent()
-
     run_module._dry_run_loop(
-        game_id_full="ar25", n_rounds=1, max_actions=3,
+        game_id_full="ar25", n_rounds=1, max_actions=5,
         out_dir=tmp_path,
         action_agent=action_agent,
         reflection_agent=reflection_agent,
         fps=2, save_images=False, seed=0,
     )
-
     trace = [json.loads(l) for l in
              (tmp_path / "round_00" / "trace.jsonl").read_text().splitlines()]
-    # First step: knowledge starts empty -> not flagged -> mask empty -> no override.
-    # After attach_knowledge, knowledge.rules has the flag, so step 1 onwards
-    # should mask ACTION1 and replace it.
     overrides = [r.get("orch_override", "") for r in trace]
-    # Mask might not fire on step 0 if Knowledge.rules check is post-attach;
-    # at least one of the subsequent steps must show an override.
-    assert any(o for o in overrides), (
-        f"R2 mask should fire at least once but orch_override stayed empty: {overrides}"
+    assert all(not o for o in overrides), (
+        f"B: orchestrator should never override; got: {overrides}"
     )
 
 
@@ -230,6 +190,89 @@ def test_R2_mask_does_not_fire_without_flag(tmp_path) -> None:
     assert all(not o for o in overrides), (
         f"R2 mask should NOT fire without flag or threshold but did: {overrides}"
     )
+
+
+# ── C: orchestrator stuck alert ──────────────────────────────────────────
+
+
+def test_C_build_stuck_alert_returns_empty_when_below_threshold() -> None:
+    out = run_module._build_stuck_alert(no_op_streak=0, state_revisit=1,
+                                        last_picks=["ACTION1"])
+    assert out == ""
+
+
+def test_C_build_stuck_alert_fires_at_threshold() -> None:
+    out = run_module._build_stuck_alert(
+        no_op_streak=5, state_revisit=6,
+        last_picks=["ACTION1"] * 5,
+    )
+    assert out != ""
+    # Should name the culprit
+    assert "ACTION1" in out
+    # Should suggest others
+    assert "ACTION2" in out or "ACTION3" in out
+
+
+def test_C_build_stuck_alert_fires_on_state_revisit_alone() -> None:
+    """Either condition (no_op_streak OR state_revisit) is enough to fire."""
+    out = run_module._build_stuck_alert(
+        no_op_streak=0, state_revisit=10,
+        last_picks=["ACTION6"] * 3,
+    )
+    assert out != ""
+    assert "ACTION6" in out
+
+
+# ── D: natural termination on WIN/GAME_OVER ────────────────────────────
+
+
+def test_D_loop_breaks_on_game_over_state(tmp_path) -> None:
+    """A stub env that transitions to GAME_OVER after 3 steps should
+    cause the round to end at step 3, not run to max_actions."""
+    import numpy as np
+    from arcengine import GameState
+
+    class _GameOverEnv:
+        def __init__(self):
+            self._step = 0
+        def reset(self):
+            class F:
+                state = GameState.NOT_FINISHED
+                frame = [np.zeros((8, 8), dtype=int)]
+                available_actions = [1, 2, 3, 4, 5, 7]
+                levels_completed = 0
+                win_levels = 3
+                game_id = "stub"
+                guid = "g"
+            return F()
+        def step(self, action, data=None, reasoning=None):
+            self._step += 1
+            class F:
+                state = (GameState.GAME_OVER if self._step >= 3
+                         else GameState.NOT_FINISHED)
+                frame = [np.zeros((8, 8), dtype=int)]
+                available_actions = [1, 2, 3, 4, 5, 7]
+                levels_completed = 0
+                win_levels = 3
+                game_id = "stub"
+                guid = "g"
+            return F()
+
+    class _Arc:
+        def make(self, gid, scorecard_id=None): return _GameOverEnv()
+        def open_scorecard(self, tags=None): return "c"
+        def close_scorecard(self, card_id): return {}
+
+    summary = run_module.run_one_game(
+        arc=_Arc(), card_id="c", game_id_full="stub",
+        n_rounds=1, max_actions=100,
+        out_dir=tmp_path,
+        action_agent=run_module._DryRunActionAgent(seed=0),
+        reflection_agent=run_module._DryRunReflectionAgent(),
+        fps=2, save_images=False, seed=0,
+    )
+    # Round should stop at step 3 (GAME_OVER), not at 100
+    assert summary["per_round"][0]["n_steps"] <= 3
 
 
 def test_no_images_flag_skips_pngs(tmp_path) -> None:

@@ -145,6 +145,22 @@ class ReflectionAgent:
         *,
         knowledge: Knowledge,
         step_summary: StepSummary,
+        # Optional full state context. When provided, the Reflection
+        # USER prompt includes [STATUS]/[ACTIVE]/[OBJECT RELATIONS]/
+        # [ACTION effects] -- the same perception context the Action
+        # Agent sees. Required for goal inference; older callers can
+        # omit these to get the legacy step-summary-only behavior.
+        step: Optional[int] = None,
+        max_steps: Optional[int] = None,
+        level: Optional[int] = None,
+        total_levels: Optional[int] = None,
+        state_name: Optional[str] = None,
+        legal_actions: Optional[list[str]] = None,
+        frame_objects: Optional[list[Any]] = None,
+        layer_by_id: Optional[dict[int, Any]] = None,
+        object_memory: Optional[Any] = None,
+        outcome_log: Optional[Any] = None,
+        object_relations: Optional[Any] = None,
     ) -> tuple[dict[str, Any], str]:
         """One reflection turn. Returns (delta, raw_response).
 
@@ -156,6 +172,12 @@ class ReflectionAgent:
         user_prompt = build_reflection_user_prompt(
             knowledge=knowledge,
             step_summary=step_summary,
+            step=step, max_steps=max_steps,
+            level=level, total_levels=total_levels,
+            state_name=state_name, legal_actions=legal_actions,
+            frame_objects=frame_objects, layer_by_id=layer_by_id,
+            object_memory=object_memory, outcome_log=outcome_log,
+            object_relations=object_relations,
         )
         self._state.last_prompt = REFLECTION_SYSTEM + "\n\n" + user_prompt
         self._state.call_count += 1

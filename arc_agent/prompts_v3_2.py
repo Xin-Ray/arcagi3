@@ -204,14 +204,19 @@ def build_action_user_prompt(
     if knowledge.current_alert:
         blocks.append("[REFLECTION ALERT]\n" + knowledge.render_alert())
     if blocked_actions:
-        # Sort for deterministic output; orchestrator will reject these picks
+        # Sort for deterministic output. B (2026-05-14): we no longer
+        # silently replace these picks; they are ADVISORY. The LLM should
+        # usually avoid them, but may pick anyway if the state has clearly
+        # changed (e.g. ACTION_X failed because player was at the wall;
+        # after moving, it might work again).
         sorted_blocked = sorted(blocked_actions)
         blocks.append(
-            "[BLOCKED ACTIONS - orchestrator will REPLACE these picks]\n"
+            "[LOW-PRIORITY ACTIONS - recently ineffective; consider others first]\n"
             "  " + ", ".join(sorted_blocked) + "\n"
-            "  Picking any of these wastes your turn -- the orchestrator\n"
-            "  will silently substitute an untried or known-good action.\n"
-            "  Choose from the remaining legal actions instead."
+            "  These actions have failed N times recently OR Knowledge flags\n"
+            "  them as ineffective. They are NOT blocked -- pick one only if\n"
+            "  the game state has clearly changed (e.g. you moved off a wall)\n"
+            "  or you've exhausted higher-priority options."
         )
     blocks.append("[KNOWLEDGE - accumulated across rounds]\n" + knowledge.render())
     blocks.append(v3_body_no_ask)
@@ -232,10 +237,80 @@ def build_reflection_user_prompt(
     *,
     knowledge: Knowledge,
     step_summary: StepSummary,
+    # New: full state context so Reflection can infer goals from object
+    # configuration, not just step-level signals.
+    step: Optional[int] = None,
+    max_steps: Optional[int] = None,
+    level: Optional[int] = None,
+    total_levels: Optional[int] = None,
+    state_name: Optional[str] = None,
+    legal_actions: Optional[list[str]] = None,
+    frame_objects: Optional[list[Any]] = None,
+    layer_by_id: Optional[dict[int, Any]] = None,
+    object_memory: Optional[Any] = None,
+    outcome_log: Optional[Any] = None,
+    object_relations: Optional[Any] = None,
 ) -> str:
-    """Compose the Reflection USER prompt for ONE step (per §4.3)."""
+    """Compose the Reflection USER prompt.
+
+    Per `docs/ref_v3_2_dataflow_zh.md` updates 2026-05-14: Reflection now
+    sees the same perception context as the Action Agent (active objects,
+    object_relations, outcome log per-action stats, history) so it can
+    infer goals from object configuration -- the previous version only
+    saw a single-step summary which was too narrow to support real
+    goal_hypothesis reasoning.
+
+    All state-context kwargs are optional for backward compatibility with
+    older callers / tests; when None, the corresponding block is omitted.
+    """
     blocks: list[str] = []
     blocks.append("[CURRENT KNOWLEDGE before this step]\n" + knowledge.render())
+
+    # Status block when env-context provided
+    if step is not None and max_steps is not None:
+        status_lines = [
+            f"  step: {step} / {max_steps}",
+        ]
+        if level is not None and total_levels is not None:
+            status_lines.append(f"  level: {level} / {total_levels}")
+        if state_name:
+            status_lines.append(f"  game state: {state_name}")
+        if legal_actions:
+            status_lines.append(f"  legal actions: {', '.join(legal_actions)}")
+        blocks.append("[STATUS]\n" + "\n".join(status_lines))
+
+    # Active object snapshot (reuses prompts_v3 formatter)
+    if object_memory is not None:
+        try:
+            from arc_agent.prompts_v3 import _format_active_block
+            active = object_memory.alive_tracked()
+            blocks.append(_format_active_block(active))
+        except Exception:
+            pass
+
+    # Object relations (same-color/shape/distances) -- the key piece for
+    # goal inference. "If two objects share a color, the goal often is
+    # to bring them together / align them" -- see REFLECTION_SYSTEM.
+    if object_relations is not None:
+        try:
+            from arc_agent.object_relations import render_relations_block
+            blocks.append(render_relations_block(object_relations))
+        except Exception:
+            pass
+
+    # Per-action effects observed (so Reflection sees empirical truth,
+    # not just the single-step outcome)
+    if outcome_log is not None and legal_actions:
+        try:
+            from arc_agent.action_inference import render_action_block
+            blocks.append(
+                "[ACTION effects observed]\n"
+                + render_action_block(outcome_log, legal_actions)
+            )
+        except Exception:
+            pass
+
+    # Step summary stays as the focal "this step" detail
     blocks.append(step_summary.render())
     blocks.append(_REFLECTION_ASK_BLOCK)
     return "\n\n".join(blocks)
@@ -243,8 +318,27 @@ def build_reflection_user_prompt(
 
 _REFLECTION_ASK_BLOCK = """[ASK]
 Output STRICT JSON with all six fields. Use {}/[]/""/null for "no update".
-Write current_alert ONLY if the Action Agent's mental model is wrong,
-the agent is stuck, or revisits keep increasing."""
+
+For goal_hypothesis_update specifically:
+  - You see the FULL current state above (active objects, their colors,
+    shapes, positions, same-color groups, same-shape groups, distances).
+  - A good goal describes the WIN STATE -- what the player needs to
+    achieve, in plain language. Examples:
+      "align the two red squares vertically in the left column"
+      "every yellow object must reach the bottom edge"
+      "match the moving blue square to the static blue target"
+  - Patterns to USE the state info:
+      * Same-color groups -> goal often involves bringing them together
+      * Same-shape groups -> goal might be pairing or alignment
+      * Static objects near one edge -> they may be targets / goals
+      * Active object + same-color static object -> match them
+  - DO NOT write action-style goals ("ACTION_X should ...") -- that's
+    action_semantics, not a goal.
+  - If you have insufficient evidence, set goal_hypothesis_update to
+    null. Do NOT write "unknown" / "none" / "" as a string.
+
+Write current_alert ONLY when the Action Agent's mental model is wrong
+or the agent is stuck (no_op_streak >= 3 or state_revisit_count >= 3)."""
 
 
 __all__ = [

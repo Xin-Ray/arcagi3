@@ -350,36 +350,30 @@ def test_R3_skipped_when_streak_below_threshold() -> None:
 # ── R7: BLOCKED ACTIONS visible in prompt ────────────────────────────────
 
 
-def test_R7_blocked_block_appears_in_prompt_when_action_dead() -> None:
-    """When OutcomeLog shows ACTION1 dead (5+ all-no-op), the user prompt
-    sent to the backbone should include [BLOCKED ACTIONS] listing ACTION1.
-
-    Note: R3 (stuck untried) would normally kick in first on an unchanging
-    grid because state_revisit_count hits 5 at the same time as no_op_streak.
-    To isolate R7 we raise R3's thresholds far above the test horizon.
-    """
+def test_R7_lowpriority_block_appears_in_prompt_when_action_dead() -> None:
+    """When OutcomeLog shows ACTION1 with 5+ all-no-op tries, the user
+    prompt should include the [LOW-PRIORITY ACTIONS] advisory."""
     same = np.zeros((8, 8), dtype=int)
     bb = _FakeBackbone(["reasoning: r\naction: ACTION1"] * 10)
     agent = ActionAgent(backbone=bb, seed=0)
-    agent.STUCK_NO_OP_THRESHOLD = 1000     # isolate R7 from R3
+    agent.STUCK_NO_OP_THRESHOLD = 1000     # isolate from R3
     agent.STUCK_STATE_REVISIT_THRESHOLD = 1000
-    agent.COLLAPSE_WINDOW = 1000            # isolate from anti-collapse too
-    # 6 ACTION1 attempts on the unchanging grid -> 5+ no-ops in OutcomeLog
+    agent.COLLAPSE_WINDOW = 1000
     for _ in range(7):
         agent.choose(_frame(available=[1, 2, 3], grid=same), history=[])
     prompt = bb.calls[-1]["prompt"]
-    assert "[BLOCKED ACTIONS" in prompt, "R7 block missing from prompt"
-    blocked_section = prompt.split("[BLOCKED ACTIONS")[1].split("[KNOWLEDGE")[0]
-    assert "ACTION1" in blocked_section
+    assert "[LOW-PRIORITY ACTIONS" in prompt, "advisory block missing"
+    block = prompt.split("[LOW-PRIORITY ACTIONS")[1].split("[KNOWLEDGE")[0]
+    assert "ACTION1" in block
 
 
-def test_R7_no_block_when_no_action_dead() -> None:
-    """Empty OutcomeLog + empty Knowledge -> no mask -> no [BLOCKED ACTIONS]."""
+def test_R7_no_lowpriority_block_when_no_action_dead() -> None:
+    """Empty OutcomeLog + Knowledge -> no mask -> no advisory block."""
     bb = _FakeBackbone(["reasoning: r\naction: ACTION1"])
     agent = ActionAgent(backbone=bb)
     agent.choose(_frame(available=[1, 2, 3]), history=[])
     prompt = bb.calls[-1]["prompt"]
-    assert "[BLOCKED ACTIONS" not in prompt
+    assert "[LOW-PRIORITY ACTIONS" not in prompt
 
 
 # ── max_new_tokens / temperature passthrough ──────────────────────────────
