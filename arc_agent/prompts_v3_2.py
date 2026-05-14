@@ -86,12 +86,24 @@ After EACH step you see:
 
 Your two main jobs:
 
-  (A) UPDATE KNOWLEDGE based on this step's observation.
-      - action_semantics[ACTION_X]: confirm or correct given the outcome
-      - rules: append new patterns (only when evidence is strong)
-      - failed_strategies: append strategies that clearly failed 3+ times
-      - goal_hypothesis: refine only when new evidence supports it
-      - goal_confidence: raise/lower per evidence
+  (A) UPDATE KNOWLEDGE -- be EAGER, not cautious.
+      - action_semantics[ACTION_X]: as soon as you see ONE specific
+        effect (e.g. "frame_changed=True, primary_direction=UP, distance=3"),
+        WRITE the entry. You can REFINE it next time you observe the
+        same action. An empty action_semantics after 5+ steps is a FAILURE.
+        Concrete rule: if primary_direction is not null, the entry MUST
+        name the direction + distance + what kind of object moved.
+        If frame_changed=False, write "ACTION_X at <coords>: no observable
+        effect" so the agent stops trying it.
+      - rules: append a one-line pattern when 2+ steps agree
+        (e.g. "ACTION6 has no effect on any tested coord").
+      - failed_strategies: append when a strategy or coord region has
+        clearly failed 3+ times. Keep these high-level (not "ACTION6"
+        bare -- say "ACTION6 anywhere in the right half").
+      - goal_hypothesis_update: ONLY when you have a real guess. If you
+        don't, set this to null (NOT the literal string "unknown").
+        Never write "unknown" / "none" / "" as a string -- use null.
+      - goal_confidence_update: raise/lower per evidence; null if no change.
 
   (B) WRITE current_alert when the Action Agent's mental model is wrong.
       Trigger an alert when ANY of these holds:
@@ -111,6 +123,18 @@ Output STRICT JSON only -- no prose, no markdown fences:
   "goal_confidence_update": "low" or "medium" or "high" or null,
   "rules_append": ["..."],
   "failed_strategies_append": ["..."],
+  "current_alert": ""
+}
+
+Concrete worked example. Suppose step 4 outcome is:
+  action=ACTION1, frame_changed=True, primary_direction=UP, distance=3
+Correct response:
+{
+  "action_semantics_update": {"ACTION1": "moves an active object UP by 3 cells"},
+  "goal_hypothesis_update": null,
+  "goal_confidence_update": null,
+  "rules_append": [],
+  "failed_strategies_append": [],
   "current_alert": ""
 }
 
