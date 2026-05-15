@@ -50,6 +50,7 @@ from arc_agent.action_inference import OutcomeLog, StepOutcome  # noqa: E402
 from arc_agent.action_mask import apply_action_mask, compute_action_mask  # noqa: E402
 from arc_agent.agents.action_agent import ActionAgent  # noqa: E402
 from arc_agent.agents.reflection_agent import ReflectionAgent  # noqa: E402
+from arc_agent.click_targets import update_click_targets  # noqa: E402
 from arc_agent.knowledge import Knowledge  # noqa: E402
 from arc_agent.object_aligner import align_objects  # noqa: E402
 from arc_agent.object_extractor import extract_objects  # noqa: E402
@@ -470,6 +471,24 @@ def run_one_game(
                 d = action.action_data.model_dump()
                 coords = (int(d.get("x", 0)), int(d.get("y", 0)))
 
+            # BUG-10: deterministic ACTION6 bandit. Reconcile click_targets
+            # with the latest perception + debit the nearest target on a
+            # no_op click / credit on a successful click. The list is then
+            # available to the NEXT step's Action prompt.
+            refl_object_memory = getattr(
+                getattr(action_agent, "_state", None), "object_memory", None
+            )
+            if refl_object_memory is not None:
+                alive_objs = refl_object_memory.alive_tracked()
+                knowledge.click_targets = update_click_targets(
+                    knowledge.click_targets,
+                    alive_objs,
+                    last_action=action.name,
+                    last_coords=coords,
+                    frame_changed=changed,
+                    step=step,
+                )
+
             summary = StepSummary(
                 step=step,
                 action=action.name,
@@ -492,9 +511,9 @@ def run_one_game(
                 action_agent.get_outcome_log()
                 if hasattr(action_agent, "get_outcome_log") else None
             )
-            refl_object_memory = getattr(
-                getattr(action_agent, "_state", None), "object_memory", None
-            )
+            # refl_object_memory already bound above (used by the
+            # click_targets update). Don't re-assign.
+
             # Forward the same [EXPLORATION HINT] block the Action Agent just
             # saw, so Reflection can write a current_alert naming a specific
             # untried action / uninteracted obj_id when the agent ignores them.

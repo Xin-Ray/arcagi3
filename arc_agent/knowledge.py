@@ -34,6 +34,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any, Optional
 
+from arc_agent.click_targets import ClickTarget
+
 _VALID_CONFIDENCE = ("low", "medium", "high")
 _RULES_CAP = 10
 _FAILED_CAP = 5
@@ -227,6 +229,12 @@ class Knowledge:
     # _REJECTED_GOALS_CAP.
     rejected_goals: list[str] = field(default_factory=list)
 
+    # BUG-10 fix: persistent per-object confidence map for ACTION6. See
+    # arc_agent/click_targets.py. The orchestrator (run_v3_multi_round)
+    # owns the update; Reflection sees the list and can `mark_dead` /
+    # `promote` entries via merged_with_delta.
+    click_targets: list[ClickTarget] = field(default_factory=list)
+
     current_alert: str = ""
 
     # ── factories ────────────────────────────────────────────────────────
@@ -238,11 +246,20 @@ class Knowledge:
     # ── serialization ────────────────────────────────────────────────────
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        d = asdict(self)
+        # asdict drops the ClickTarget tuples to lists already, but we
+        # also want explicit .to_dict() to keep coords/bbox round-trippable.
+        d["click_targets"] = [t.to_dict() for t in self.click_targets]
+        return d
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "Knowledge":
         # Be tolerant: ignore unknown keys, fill in defaults.
+        ct_raw = d.get("click_targets", []) or []
+        click_targets = [
+            ClickTarget.from_dict(item) if isinstance(item, dict) else item
+            for item in ct_raw
+        ]
         return cls(
             game_id=str(d.get("game_id", "")),
             rounds_played=int(d.get("rounds_played", 0)),
@@ -254,6 +271,7 @@ class Knowledge:
             failed_strategies=list(d.get("failed_strategies", [])),
             round_history=list(d.get("round_history", [])),
             rejected_goals=list(d.get("rejected_goals", [])),
+            click_targets=click_targets,
             current_alert=str(d.get("current_alert", "")),
         )
 
@@ -418,6 +436,26 @@ class Knowledge:
             alert = delta.get("current_alert")
             new.current_alert = _clip(alert) if alert is not None else ""
 
+        # BUG-10: Reflection can ask the orchestrator to zero or boost a
+        # click_target by obj_id. Reflection isn't allowed to write the
+        # `confidence` field directly (LLM-produced floats are unreliable);
+        # these two list-valued fields are the only verbs it has.
+        dead_ids = delta.get("click_targets_marked_dead") or []
+        if isinstance(dead_ids, list) and dead_ids:
+            dead_set = {str(x) for x in dead_ids}
+            for t in new.click_targets:
+                if t.obj_id in dead_set:
+                    t.confidence = 0.0
+                    t.alive = False
+
+        promoted_ids = delta.get("click_targets_promoted") or []
+        if isinstance(promoted_ids, list) and promoted_ids:
+            promoted_set = {str(x) for x in promoted_ids}
+            for t in new.click_targets:
+                if t.obj_id in promoted_set:
+                    t.confidence = 1.0
+                    t.tries = 0   # give it a fresh start
+
         return new
 
     def append_round_summary(self, line: str) -> None:
@@ -441,6 +479,9 @@ class Knowledge:
             failed_strategies=list(self.failed_strategies),
             round_history=list(self.round_history),
             rejected_goals=list(self.rejected_goals),
+            # Shallow copy is fine: ClickTarget instances are replaced
+            # wholesale by `update_click_targets`, never mutated in place.
+            click_targets=list(self.click_targets),
             current_alert=self.current_alert,
         )
 

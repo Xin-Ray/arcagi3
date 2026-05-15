@@ -778,6 +778,45 @@ v3.1 的 P0-A、P0-B、P1 改动**全部继承**。v3.2 在它们的基础上加
 3. `render()` 把 `rejected_goals` 渲染进 [KNOWLEDGE] 块,Reflection 下次会看到 "这些目标试过且被否定,不要重提"。
 4. 类比修法对 `action_semantics`(BUG-2 同源):当 ACTION 的 semantic 从 "reshapes objects" 改成 "moves DOWN 3" 时,把旧的 append 到一个 `action_semantics_archive: dict[str, list[str]]` 里。LLM 看到 "ACTION7 历史观察过的效果: reshapes / moves DOWN 3 / moves UP 3" 才能推理出 "效果取决于上下文"。
 
+#### <span style="color: #ff4444">🔴 BUG-10 — ACTION6 无 per-object 置信度,模型盲点</span> **用户提出 + 2026-05-14 smoke 数据**
+
+**严重度**: 关键 (单 action 类型独占探索资源)
+**复现** (`outputs/bug8_9_smoke_20260514-205044/round_00/trace.jsonl`,376 步 round 0):
+- ACTION6 总数: **219**(占所有 action 的 58%)
+- frame_changed=True 的 ACTION6: **0**(全部 no-op)
+- 坐标 (5, 60) 被点了 **122 次**(56% 的 ACTION6 picks)
+- 前 3 个坐标 ((5,60) + (31,63) + (54,48))占 ACTION6 的 **80%**
+- reasoning 提到 `obj_*` 任意 id: **0 / 219**
+- reasoning 提到颜色: 28 / 219 (13%)
+- reasoning 提到坐标: 21 / 219 (10%)
+- 最常用 reasoning 模板: `"ACTION6 has been tried multiple times without effect; try a different location."` (79x)
+
+**原因**: 模型把 ACTION6 当成"在 64×64 = 4096 个像素里盲选"。`[CLICK CANDIDATES]` 是每帧重算的,**无 memory**:同一坐标可以反复推荐。模型把"换 location"理解成"再点 ACTION6 一次,只是 x,y 换数"。
+
+**修法 (已实施)**: `arc_agent/click_targets.py` —— 把 ACTION6 从"4096 像素盲选"压缩为"~10 个具名 target 的 bandit"。
+
+- `ClickTarget` 数据结构:`obj_id` (current-round volatile) + `signature` (color+shape, 跨 round 稳定) + `coords` + `confidence` + `tries` + `successes` + `last_seen_step` + `alive`。
+- **跨 round 复活**: 新 round 的 obj_001 (signature "cyan_1x1") 命中历史 click_target (signature 同),`confidence`/`tries`/`successes` 自动迁移到新 uid。
+- **更新规则** (`update_click_targets`, orchestrator 端确定性):
+  - 命中半径 (Euclidean ≤ 3 cell):ACTION6 (x,y) 距某 target 的 `coords` 中心 ≤ 3 → 该 target 被"点中"。
+  - 点中 + no-op: `tries += 1`,`confidence *= 0.7`(5 次未中 → 0.16)。
+  - 点中 + frame_changed: `successes += 1`,`confidence = min(1.0, conf × 2.0)`。
+  - 野点(无 target 在半径内):忽略,不算 try,也不 append。
+- **cap 10** (`max_targets=10`),按 `priority = confidence × (1 - tries/10)` 排序 —— 新 untried (tries=0) 永远排在衰减的前面,无论后者 confidence 多高。
+- **prompt 块** `[CLICK TARGETS]` 在 `prompts_v3_2.build_action_user_prompt` 中,位于 `[KNOWLEDGE]` / `[EXPLORATION HINT]` 之后,v3 body 之前。当 `Knowledge.click_targets` 非空,**替换** v3 的 `[CLICK CANDIDATES]`(orchestrator 传 `click_candidates=None`),避免两个 list 互相打架。
+- **Reflection 的角色**:不直接动 `confidence` 数值(LLM 写浮点不可靠)。但可通过 delta:
+  - `click_targets_marked_dead: list[obj_id]` → `confidence=0, alive=False`
+  - `click_targets_promoted: list[obj_id]` → `confidence=1.0, tries=0`(给一个 fresh start)
+  这两个动词在 `Knowledge.merged_with_delta` 中处理。
+
+**期望效果(假设 ar25 仍是测试场景)**:
+- (5, 60) 这种盲点重复 ≤ 3 次后 `confidence < 0.34`,被 `[CLICK TARGETS]` 标 WRITTEN OFF,模型不再选
+- 如果所有 target conf 都 < 0.3,prompt 显式建议"换 ACTION 类型而不是换坐标"
+- ACTION6 占比从 58% 降到 ~ 15-20%(健康水平)
+- entropy 从 1.43 回升到 ≥ 2.0
+
+**待 smoke 验证**:1×80 步以上的 round,看 (5,60) 的 tries 数 + entropy 是否回升。
+
 #### <span style="color: #ff4444">🔴 BUG-9 — action_semantics 写的是 "an active object",没有主语</span> **用户提出**
 
 **严重度**: 高 (Knowledge 文本无信息)
@@ -797,15 +836,17 @@ v3.1 的 P0-A、P0-B、P1 改动**全部继承**。v3.2 在它们的基础上加
 
 按用户反馈强度排序:
 
-1. **BUG-8 (goal_hypothesis 直接覆盖)** —— 用户最新强调。加 `rejected_goals` 负向记忆。**当前批次先修。**
-2. **BUG-9 (action_semantics 无主语)** —— 用户最新强调。Reflection prompt + subject 校验。**当前批次先修。**
-3. **BUG-5 (round 提早结束)** —— 关键,立即修。CLI 不再传 --max-actions 80,游戏自己决定何时停。
-4. **BUG-2 (action_semantics 覆写)** —— 用户明确提到 + 影响 Knowledge 质量。先做简单版 (Reflection prompt conditional 形式),后考虑 schema 升级(跟 BUG-8 同源 — 都是覆盖式 schema)。
-5. **BUG-6 (per-claim confidence)** —— 用户明确提到。配合 BUG-2 一起改 Reflection schema。
-6. **BUG-1 (reasoning N/A 91%)** —— Action SYSTEM prompt 加 direction 强制。
-7. **BUG-4 (ACTION6 coord memory)** —— [ACTION6 TRIED COORDS] 块。
-8. **BUG-3 (重复 semantic)** —— Reflection prompt 微调。
-9. **BUG-7 (C 阈值)** —— 调 3-4。
+1. ✅ **BUG-8 (goal_hypothesis 直接覆盖)** —— 加 `rejected_goals` 负向记忆。已 commit `4680508`。**未触发实测**(需要 Reflection 改口的场景才能验证)。
+2. ✅ **BUG-9 (action_semantics 无主语)** —— Reflection prompt + subject 校验。已 commit `4680508`,smoke 验证生效("the maroon 1x1" 而非 "an active object")。
+3. ✅ **BUG-10 (ACTION6 无 per-object 置信度)** —— ClickTarget bandit。本批次实施。**待 smoke 验证**。
+4. ✅ **EXPLORATION HINT (idea 1)** —— `untried_actions` + `uninteracted_objects` + masked-hash stuck 检测器。已 commit `4680508`,**待 smoke 验证**。
+5. **BUG-5 (round 提早结束)** —— ✅ max_actions 默认 80→500,自然终止。
+6. **BUG-2 (action_semantics 覆写)** —— 部分修复(Reflection prompt 鼓励 conditional 形式)。完全修需要 schema 升级。
+7. **BUG-6 (per-claim confidence)** —— 配合 BUG-2 一起改 Reflection schema。
+8. **BUG-1 (reasoning N/A 91%)** —— Action SYSTEM prompt 加 direction 强制。smoke 已显示降到 69%(N/A=254/367) — 有改善但仍高。
+9. **BUG-4 (ACTION6 coord memory)** —— ✅ **被 BUG-10 完全覆盖**:`[CLICK TARGETS]` 块替代了 `[ACTION6 TRIED COORDS]`,且更丰富(置信度 + 主语 + interactive 标记)。
+10. **BUG-3 (重复 semantic)** —— Reflection prompt 微调。
+11. **BUG-7 (C 阈值)** —— 已被 masked-hash stuck_detector (3 repeats 触发)取代,可降级。
 
 ---
 

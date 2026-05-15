@@ -263,6 +263,13 @@ class ActionAgent:
             skip_texture=True,
         )
 
+        # BUG-10: when Knowledge.click_targets is populated, prefer the
+        # persistent confidence-mapped target list over v3's stateless
+        # candidates. The new block already says "do NOT invent x,y" so we
+        # null v3's [CLICK CANDIDATES] to avoid two competing lists.
+        ct_for_prompt = list(self._knowledge.click_targets) or None
+        cc_for_prompt = None if ct_for_prompt else click_cands
+
         user_prompt = build_action_user_prompt(
             knowledge=self._knowledge,
             step=self._state.step_count,
@@ -279,10 +286,11 @@ class ActionAgent:
             goal_confidence=self._knowledge.goal_confidence,
             diversification_hint=diversification,
             stuck_reason=stuck_reason if is_stuck else None,
-            click_candidates=click_cands,
+            click_candidates=cc_for_prompt,
             blocked_actions=blocked,
             object_relations=relations,
             exploration_hint=exploration_hint or None,
+            click_targets=ct_for_prompt,
         )
         self._state.last_prompt = ACTION_SYSTEM + "\n\n" + user_prompt
 

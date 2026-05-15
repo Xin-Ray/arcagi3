@@ -403,3 +403,52 @@ def test_reflection_system_mentions_exploration_hint() -> None:
     """Reflection SYSTEM should tell the agent it MAY write an alert based
     on the EXPLORATION HINT."""
     assert "EXPLORATION HINT" in REFLECTION_SYSTEM
+
+
+# ── BUG-10: [CLICK TARGETS] block ──────────────────────────────────────
+
+
+def _make_click_target(**overrides):
+    from arc_agent.click_targets import ClickTarget
+    defaults = dict(
+        obj_id="obj_001", signature="cyan_1x1", coords=(12, 30),
+        color_name="cyan", bbox=(12, 30, 12, 30),
+        confidence=1.0, tries=0, successes=0, last_seen_step=0, alive=True,
+    )
+    defaults.update(overrides)
+    return ClickTarget(**defaults)
+
+
+def test_action_prompt_includes_click_targets_when_passed() -> None:
+    p = _build_action_prompt(click_targets=[
+        _make_click_target(obj_id="obj_002", color_name="red",
+                           bbox=(10, 20, 11, 21), coords=(10, 20)),
+    ])
+    assert "[CLICK TARGETS" in p
+    assert "obj_002" in p
+    assert "(10,20)" in p
+
+
+def test_action_prompt_no_click_targets_block_when_empty() -> None:
+    p = _build_action_prompt(click_targets=[])
+    assert "[CLICK TARGETS" not in p
+
+
+def test_action_prompt_no_click_targets_block_when_none() -> None:
+    p = _build_action_prompt(click_targets=None)
+    assert "[CLICK TARGETS" not in p
+
+
+def test_action_prompt_click_targets_ordered_by_priority() -> None:
+    """Untried target (priority 1.0) must appear before decayed one."""
+    p = _build_action_prompt(click_targets=[
+        _make_click_target(obj_id="obj_decayed", confidence=0.9, tries=8),
+        _make_click_target(obj_id="obj_fresh", confidence=1.0, tries=0),
+    ])
+    assert p.index("obj_fresh") < p.index("obj_decayed")
+
+
+def test_action_prompt_click_targets_above_v3_blocks() -> None:
+    """[CLICK TARGETS] should appear before [STATUS] so it's not buried."""
+    p = _build_action_prompt(click_targets=[_make_click_target()])
+    assert p.index("[CLICK TARGETS") < p.index("[STATUS]")

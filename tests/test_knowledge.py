@@ -690,3 +690,84 @@ def test_BUG9_drops_only_offending_key_in_mixed_delta() -> None:
     k2 = k.merged_with_delta(delta)
     assert "ACTION1" not in k2.action_semantics
     assert k2.action_semantics["ACTION2"] == "moves the blue 1x1 DOWN by 2"
+
+
+# ── BUG-10: Knowledge.click_targets persistence + Reflection hooks ────
+
+
+def test_BUG10_click_targets_default_empty() -> None:
+    k = Knowledge.empty("ar25")
+    assert k.click_targets == []
+
+
+def test_BUG10_click_targets_roundtrip_via_dict() -> None:
+    from arc_agent.click_targets import ClickTarget
+    k = Knowledge.empty("ar25")
+    k.click_targets = [
+        ClickTarget(
+            obj_id="obj_005", signature="cyan_1x1", coords=(12, 30),
+            color_name="cyan", bbox=(12, 30, 12, 30),
+            confidence=0.49, tries=3, successes=0, last_seen_step=7,
+        ),
+    ]
+    s = json.dumps(k.to_dict())
+    k2 = Knowledge.from_dict(json.loads(s))
+    assert len(k2.click_targets) == 1
+    assert k2.click_targets[0].obj_id == "obj_005"
+    assert k2.click_targets[0].coords == (12, 30)
+    assert k2.click_targets[0].confidence == pytest.approx(0.49)
+
+
+def test_BUG10_merge_marks_dead_zeroes_confidence() -> None:
+    """Reflection can flag a target as confirmed-useless. The orchestrator
+    zeroes confidence and sets alive=False so the prompt drops it."""
+    from arc_agent.click_targets import ClickTarget
+    k = Knowledge.empty("ar25")
+    k.click_targets = [
+        ClickTarget(obj_id="obj_005", signature="cyan_1x1", coords=(10, 20),
+                    color_name="cyan", bbox=(10, 20, 10, 20),
+                    confidence=0.7, tries=2),
+        ClickTarget(obj_id="obj_009", signature="red_1x1", coords=(40, 40),
+                    color_name="red", bbox=(40, 40, 40, 40),
+                    confidence=0.5, tries=1),
+    ]
+    k2 = k.merged_with_delta({"click_targets_marked_dead": ["obj_005"]})
+
+    by_uid = {t.obj_id: t for t in k2.click_targets}
+    assert by_uid["obj_005"].confidence == 0.0
+    assert by_uid["obj_005"].alive is False
+    # The other target is untouched
+    assert by_uid["obj_009"].confidence == pytest.approx(0.5)
+    assert by_uid["obj_009"].alive is True
+
+
+def test_BUG10_merge_promoted_resets_target() -> None:
+    """Reflection can rescue a wrongly-decayed target — gives it a fresh
+    confidence=1.0 and zero tries so it bubbles back to the top of the list."""
+    from arc_agent.click_targets import ClickTarget
+    k = Knowledge.empty("ar25")
+    k.click_targets = [ClickTarget(
+        obj_id="obj_005", signature="cyan_1x1", coords=(10, 20),
+        color_name="cyan", bbox=(10, 20, 10, 20),
+        confidence=0.05, tries=10, successes=0,
+    )]
+    k2 = k.merged_with_delta({"click_targets_promoted": ["obj_005"]})
+    assert k2.click_targets[0].confidence == 1.0
+    assert k2.click_targets[0].tries == 0
+
+
+def test_BUG10_merge_ignores_unknown_obj_ids() -> None:
+    """marked_dead / promoted with obj_ids not in the list = no-op."""
+    from arc_agent.click_targets import ClickTarget
+    k = Knowledge.empty("ar25")
+    k.click_targets = [ClickTarget(
+        obj_id="obj_005", signature="cyan_1x1", coords=(10, 20),
+        color_name="cyan", bbox=(10, 20, 10, 20),
+        confidence=0.7,
+    )]
+    k2 = k.merged_with_delta({
+        "click_targets_marked_dead": ["obj_999"],
+        "click_targets_promoted": ["obj_888"],
+    })
+    assert k2.click_targets[0].confidence == pytest.approx(0.7)
+    assert k2.click_targets[0].alive is True

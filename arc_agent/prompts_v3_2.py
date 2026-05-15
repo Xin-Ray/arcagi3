@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
+from arc_agent.click_targets import ClickTarget, render_click_targets_block
 from arc_agent.knowledge import Knowledge
 from arc_agent.prompts_v3 import build_play_user_prompt
 from arc_agent.step_summary import StepSummary
@@ -195,6 +196,7 @@ def build_action_user_prompt(
     blocked_actions: Optional[set[str]] = None,
     object_relations: Optional[Any] = None,
     exploration_hint: Optional[str] = None,
+    click_targets: Optional[list[ClickTarget]] = None,
 ) -> str:
     """Compose the Action Agent USER prompt.
 
@@ -254,6 +256,14 @@ def build_action_user_prompt(
         # KNOWLEDGE so the LLM sees what's NOT in Knowledge before reading
         # the v3 enriched context below.
         blocks.append(exploration_hint)
+    if click_targets:
+        # BUG-10: per-object ACTION6 confidence map. When non-empty this
+        # supersedes v3's stateless [CLICK CANDIDATES] block -- the caller
+        # is expected to pass click_candidates=None in that case so we
+        # don't show two redundant target lists.
+        ct_block = render_click_targets_block(click_targets)
+        if ct_block:
+            blocks.append(ct_block)
     blocks.append(v3_body_no_ask)
     blocks.append(_ACTION_ASK_BLOCK)
     return "\n\n".join(blocks)
