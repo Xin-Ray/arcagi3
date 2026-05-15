@@ -144,6 +144,7 @@ def update_click_targets(
             by_sig[t.signature] = t
 
     out: list[ClickTarget] = []
+    refreshed_uids: set[str] = set()
     for obj in alive_tracked:
         history = getattr(obj, "history", None) or []
         if not history:
@@ -175,6 +176,34 @@ def update_click_targets(
                 last_seen_step=step,
             )
         out.append(new)
+        refreshed_uids.add(obj.uid)
+
+    # BUG-11 fix: carry forward prior entries whose obj_id did NOT appear in
+    # the current `alive_tracked` (likely because temporal_classifier
+    # demoted them to TEXTURE). Mark them alive=False so the prompt can flag
+    # them and the bandit can still apply ACTION6 outcomes to them when
+    # nothing else is closer. Without this, a single perception flip wipes
+    # the entire bandit history.
+    for prior_t in targets:
+        if prior_t.obj_id in refreshed_uids:
+            continue
+        # Only carry forward if it has accumulated history worth keeping
+        # (confidence > 0 OR successes > 0). Pure zero-confidence dead
+        # entries are dropped to keep the list lean.
+        if prior_t.confidence <= 0 and prior_t.successes == 0:
+            continue
+        out.append(ClickTarget(
+            obj_id=prior_t.obj_id,
+            signature=prior_t.signature,
+            coords=prior_t.coords,
+            color_name=prior_t.color_name,
+            bbox=prior_t.bbox,
+            confidence=prior_t.confidence,
+            tries=prior_t.tries,
+            successes=prior_t.successes,
+            last_seen_step=prior_t.last_seen_step,
+            alive=False,
+        ))
 
     if last_action == "ACTION6" and last_coords is not None and out:
         lx, ly = int(last_coords[0]), int(last_coords[1])
@@ -217,7 +246,9 @@ def render_click_targets_block(
         "[CLICK TARGETS -- pick by obj_id, NOT raw coords]"
     ]
     for t in sorted_targets[:max_show]:
-        if t.tries == 0:
+        if not t.alive:
+            tag = "  <- DISAPPEARED (no longer in active set)"
+        elif t.tries == 0:
             tag = "  <- UNTRIED, prefer"
         elif t.confidence < 0.1:
             tag = "  <- WRITTEN OFF"

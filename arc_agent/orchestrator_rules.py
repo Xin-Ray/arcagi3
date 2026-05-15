@@ -42,13 +42,11 @@ def auto_rules_from_outcome_log(
 ) -> list[str]:
     """Return rules deterministically derivable from OutcomeLog.
 
-    Current rule patterns:
-      - "ACTION_X: tried Nx, 0% changed -- ineffective on tested coords"
-        (when >= min_tries and >= no_op_rate fraction are no-op)
-
-    Other patterns are kept as Reflection's responsibility (anything
-    requiring creative pattern inference, e.g. "ACTION1 followed by ACTION2
-    always reaches the top edge").
+    Rule strings are CANONICAL: they do NOT include the running try count.
+    Without this, every step generates a new unique string (tried 50x,
+    tried 51x, ...) and dedup in `merged_with_delta` fails, letting the
+    rules list fill with counter variants. With a stable string, dedup
+    works and the rule appears exactly once.
     """
     if outcome_log is None:
         return []
@@ -62,8 +60,7 @@ def auto_rules_from_outcome_log(
         rate = n_no_op / n_tries
         if rate >= no_op_rate:
             rules.append(
-                f"{action}: tried {n_tries}x, {int(rate * 100)}% no-op "
-                f"-- ineffective on tested coords"
+                f"{action}: no-op on every tested coord (auto-derived)"
             )
     return rules
 
@@ -77,9 +74,7 @@ def auto_failed_strategies_from_outcome_log(
 ) -> list[str]:
     """Return failed_strategies deterministically derivable from OutcomeLog.
 
-    Currently the same surface as rules but phrased as a strategy. We keep
-    the two functions separate so we can specialize later (e.g. add
-    region-level patterns for ACTION6 by analysing tried (x,y) clusters).
+    Canonical strings (no running counter -- see auto_rules docstring).
     """
     if outcome_log is None:
         return []
@@ -92,7 +87,7 @@ def auto_failed_strategies_from_outcome_log(
         n_no_op = sum(1 for o in outcomes if not o.frame_changed)
         rate = n_no_op / n_tries
         if rate >= no_op_rate:
-            out.append(f"{action}: confirmed ineffective after {n_tries} tries")
+            out.append(f"{action}: confirmed ineffective in this game")
     return out
 
 

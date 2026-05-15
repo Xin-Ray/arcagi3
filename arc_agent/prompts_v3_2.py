@@ -52,13 +52,20 @@ KNOWLEDGE; vague reasoning starves the loop):
   - State the EXPECTED EFFECT: a direction (UP/DOWN/LEFT/RIGHT) or
     an outcome ("places a marker", "advances the level").
 
-ACTION6 (coordinate click):
-  - PICK an obj_id from [CLICK TARGETS] and use ITS coords.
-  - Do NOT invent (x, y). Do NOT copy any specific (x, y) pair
-    verbatim from this system prompt or any block in the user prompt
-    -- the examples are placeholders, not targets.
-  - If all [CLICK TARGETS] have confidence < 0.3, ACTION6 is the
-    wrong tool -- pick a different ACTION.
+ACTION6 (takes x, y parameters -- effect game-specific, NOT a generic click):
+  - The action name is "ACTION6", not "click". Its game-specific effect
+    is UNKNOWN until you observe it via frame_changed=True. Do NOT
+    assume ACTION6 "clicks", "places markers", "selects", or "matches
+    targets" -- those are priors from OTHER games, not this one.
+  - PICK an obj_id from [CLICK TARGETS] and use ITS coords; DISAPPEARED
+    or WRITTEN OFF entries (low confidence, all-no-op) are evidence
+    that ACTION6 does nothing on those objects.
+  - Do NOT invent (x, y). Do NOT copy any specific (x, y) pair verbatim
+    from this system prompt or any block in the user prompt.
+  - HARD RULE: If KNOWLEDGE.rules or KNOWLEDGE.failed_strategies say
+    ACTION6 is no-op on tested coords (auto-derived from 5+ tries),
+    STOP picking ACTION6 entirely. Pick a different ACTION1..ACTION5
+    or ACTION7. The game may not respond to coordinate input at all.
 
 OUTPUT FORMAT (strict, two lines, no JSON, no markdown):
   reasoning: <subject + expected effect, one sentence>
@@ -114,17 +121,33 @@ OUTPUT SCHEMA (no other keys, no prose, no markdown fences):
       - Do NOT re-propose a goal already in `rejected_goals` -- it has
         been tried and disproved. The orchestrator will drop such
         updates anyway.
+      - IF YOUR PROPOSED GOAL IS THE SAME AS THE ONE ALREADY IN KNOWLEDGE,
+        WRITE null. Do NOT restate the existing goal verbatim every step
+        -- that wastes tokens. Only write a string when the goal CHANGES.
       - If you don't have a real guess, set this to null. Do NOT write
         "unknown" / "none" / "" as a string -- only null.
 
-(2) action_semantics_update
-    When an action causes a frame_change, write a one-line description
-    naming the SUBJECT and the effect. Required subject forms:
+(2) action_semantics_update -- BE EAGER, NOT CAUTIOUS
+
+    HARD CONSTRAINT: If THIS step's OUTCOME shows frame_changed=True
+    with primary_direction set (UP/DOWN/LEFT/RIGHT/null+nonzero distance)
+    AND the executed ACTION has no entry in current KNOWLEDGE.action_semantics,
+    you MUST write action_semantics_update for that ACTION this turn.
+    Empty action_semantics across 5+ frame-change steps is a
+    CORRECTNESS FAILURE -- the Action Agent can't learn what each action
+    does without this.
+
+    Write a one-line description naming the SUBJECT and the effect.
+    Required subject forms:
       - color + shape  (e.g. "the red 1x1", "the yellow square")
       - obj_id         (e.g. "obj_002")
       - shape only     (e.g. "the 2x2 block", "the L-shape")
     "an active object" / "the object" / "a tracked object" are NOT
     valid subjects -- the orchestrator drops such updates.
+
+    For non-positional changes (primary_direction=null but frame_changed=True),
+    describe what visually changed instead, e.g. "rotates the red square 90 degrees"
+    or "toggles the cyan 1x1's color".
 
     If you previously wrote an entry for ACTION_X and a NEW observation
     shows a DIFFERENT effect, write a CONDITIONAL clause instead of
@@ -132,9 +155,10 @@ OUTPUT SCHEMA (no other keys, no prose, no markdown fences):
       "ACTION7: reshapes the red square when adjacent to a target;
                 moves the yellow 1x1 DOWN by 3 cells otherwise"
 
-    Use {} when there's no update this step. Don't restate entries that
-    already exist in current KNOWLEDGE -- the orchestrator dedups, but
-    those tokens are wasted.
+    Use {} ONLY when (a) frame_changed=False, or (b) you already have a
+    correct entry for the executed ACTION in KNOWLEDGE.action_semantics
+    AND this step's outcome matches that entry. Otherwise, write the
+    update.
 
 (3) current_alert
     Only fill this when matches_reasoning == "NO" (the Action Agent's
