@@ -161,6 +161,7 @@ class ReflectionAgent:
         object_memory: Optional[Any] = None,
         outcome_log: Optional[Any] = None,
         object_relations: Optional[Any] = None,
+        exploration_hint: Optional[str] = None,
     ) -> tuple[dict[str, Any], str]:
         """One reflection turn. Returns (delta, raw_response).
 
@@ -168,6 +169,11 @@ class ReflectionAgent:
         delta is {} and raw_response holds whatever we got (possibly "").
         The orchestrator should still call `knowledge.merged_with_delta(
         delta)` -- empty dict means "no change".
+
+        `exploration_hint` is the [EXPLORATION HINT] block the next-step
+        Action Agent will see; passing it here lets Reflection write a
+        current_alert that explicitly names an untried action or
+        uninteracted object.
         """
         user_prompt = build_reflection_user_prompt(
             knowledge=knowledge,
@@ -178,6 +184,7 @@ class ReflectionAgent:
             frame_objects=frame_objects, layer_by_id=layer_by_id,
             object_memory=object_memory, outcome_log=outcome_log,
             object_relations=object_relations,
+            exploration_hint=exploration_hint,
         )
         self._state.last_prompt = REFLECTION_SYSTEM + "\n\n" + user_prompt
         self._state.call_count += 1

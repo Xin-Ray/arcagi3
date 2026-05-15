@@ -349,3 +349,57 @@ def test_reflection_prompt_renders_existing_knowledge() -> None:
     p = build_reflection_user_prompt(knowledge=k, step_summary=_step_summary())
     assert "rounds: 2 played" in p
     assert "red moves first" in p
+
+
+# ── [EXPLORATION HINT] block (idea 1) ──────────────────────────────────
+
+
+def test_action_prompt_includes_exploration_hint_when_passed() -> None:
+    p = _build_action_prompt(
+        exploration_hint="[EXPLORATION HINT]\n  Actions you have NOT tried: ACTION3, ACTION5"
+    )
+    assert "[EXPLORATION HINT]" in p
+    assert "ACTION3" in p and "ACTION5" in p
+
+
+def test_action_prompt_no_exploration_block_when_none() -> None:
+    p = _build_action_prompt(exploration_hint=None)
+    assert "[EXPLORATION HINT]" not in p
+
+
+def test_action_prompt_exploration_hint_below_knowledge_above_v3() -> None:
+    """Order: KNOWLEDGE -> EXPLORATION HINT -> v3 blocks."""
+    p = _build_action_prompt(
+        exploration_hint="[EXPLORATION HINT]\n  Actions you have NOT tried: ACTION5"
+    )
+    assert p.index("[KNOWLEDGE") < p.index("[EXPLORATION HINT]")
+    assert p.index("[EXPLORATION HINT]") < p.index("[STATUS]")
+
+
+def test_reflection_prompt_includes_exploration_hint_when_passed() -> None:
+    p = build_reflection_user_prompt(
+        knowledge=Knowledge.empty("ar25"),
+        step_summary=_step_summary(),
+        exploration_hint=(
+            "[EXPLORATION HINT]\n  Actions you have NOT tried: ACTION5\n"
+            "  Objects that have NEVER reacted: obj_007 (cyan ...)"
+        ),
+    )
+    assert "[EXPLORATION HINT]" in p
+    assert "ACTION5" in p
+    assert "obj_007" in p
+
+
+def test_reflection_prompt_no_exploration_block_when_none() -> None:
+    p = build_reflection_user_prompt(
+        knowledge=Knowledge.empty("ar25"),
+        step_summary=_step_summary(),
+        exploration_hint=None,
+    )
+    assert "[EXPLORATION HINT]" not in p
+
+
+def test_reflection_system_mentions_exploration_hint() -> None:
+    """Reflection SYSTEM should tell the agent it MAY write an alert based
+    on the EXPLORATION HINT."""
+    assert "EXPLORATION HINT" in REFLECTION_SYSTEM

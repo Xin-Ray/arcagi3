@@ -495,6 +495,14 @@ def run_one_game(
             refl_object_memory = getattr(
                 getattr(action_agent, "_state", None), "object_memory", None
             )
+            # Forward the same [EXPLORATION HINT] block the Action Agent just
+            # saw, so Reflection can write a current_alert naming a specific
+            # untried action / uninteracted obj_id when the agent ignores them.
+            exploration_hint = getattr(
+                getattr(action_agent, "_state", None),
+                "last_exploration_hint",
+                "",
+            ) or None
             try:
                 delta, refl_raw = reflection_agent.reflect_after_step(
                     knowledge=knowledge, step_summary=summary,
@@ -507,6 +515,7 @@ def run_one_game(
                     object_memory=refl_object_memory,
                     outcome_log=refl_outcome_log,
                     object_relations=refl_relations,
+                    exploration_hint=exploration_hint,
                 )
             except Exception as e:
                 print(f"[round {r}] reflection failed at step {step}: {e}",

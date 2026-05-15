@@ -38,7 +38,9 @@ scipy.ndimage.label  ──►  object_extractor  ──►  temporal_classifier
 
 Key principle (`docs/arch_v3_zh.md` §0): **vision = deterministic algorithm; reasoning = text LLM; the two are connected by structured data, and the LLM never sees pixels.** This was decided because `ref_object_pipeline_zh.md` showed Qwen-VL at ~0% on per-frame object extraction while scipy was at 100% on the same ar25 set.
 
-**v3.2 layer on top** (`docs/arch_v3_2_zh.md`): split into **Action Agent + Reflection Agent** with a shared `Knowledge` object that persists across rounds within the same `game_id`. Reflection runs **per step** (not per round) so the Action Agent can use within-episode discoveries. Currently being implemented; the v3 single-agent code is what's actually running.
+**v3.2 layer on top** (`docs/arch_v3_2_zh.md`): split into **Action Agent + Reflection Agent** with a shared `Knowledge` object that persists across rounds within the same `game_id`. Reflection runs **per step** (not per round) so the Action Agent can use within-episode discoveries. The split-agent code is live: `agents/action_agent.py` + `agents/reflection_agent.py` + `knowledge.py` + `prompts_v3_2.py`, driven by `scripts/run_v3_multi_round.py`. Both that runner and the v3 single-agent path (`scripts/run_v3_eval.py`) are usable; v3.2 is the active iteration line.
+
+The 2026-05-14 hardrules thread (`docs/ref_v3_2_dataflow_zh.md` + `docs/ref_v3_2_hardrules_results_zh.md`) added orchestrator-side enforcement on top of the prompt — `action_mask.py` filters actions Reflection has already flagged as ineffective, because the LLM kept ignoring advisory prompt language.
 
 ## Library-first coding (mandatory)
 
@@ -58,11 +60,12 @@ Deprecation: don't delete; mark `Status: deprecated → <replacement>` in a docs
 
 These are the load-bearing pieces of the v3 pipeline. Names match exactly; module-level docstrings have the full contract.
 
-- **Perception** — `object_extractor.py` (scipy connected components → `ObjectRecord`), `temporal_classifier.py` (STATIC / ACTIVE / TEXTURE / CANDIDATE per object across frames), `object_aligner.py` (Hungarian cross-frame match), `object_tracker.py` (UID-keyed `ObjectMemory` for an episode).
-- **Memory** — `action_inference.py` (`OutcomeLog`, `StepOutcome`, `detect_stuck`, `detect_collapse`, `summarize_action` → `LearnedActionMap`), `world_model.py` (persistent A3 state across steps), `click_candidates.py` (ACTION6 coordinate proposals).
-- **Reasoner** — `prompts_v3.py` (8-block prompt builder), `agents/text_agent.py` (current main agent — text-only Qwen + anti-collapse), `vlm_backbone.py` (Qwen2.5-VL loader with lazy `torch/transformers` import).
-- **Reflection / mistakes** — `agents/reflect.py` (PlayReflectAgent A3/A4), `mistakes.py` (deterministic mistake detectors).
-- **Run plumbing** — `runner.py` (`Agent` Protocol + `play_one`), `baseline.py` (`play_one_with_trace` — trace.jsonl + step PNGs + play.gif), `viz.py` (4-quadrant `compose_step_image` + `write_gif`), `observation.py` (`grid_to_image`, `serialize_step`), `eval_split.py` (`demo_555_split`, `write_summary`).
+- **Perception** — `object_extractor.py` (scipy connected components → `ObjectRecord`), `temporal_classifier.py` (STATIC / ACTIVE / TEXTURE / CANDIDATE per object across frames), `object_aligner.py` (Hungarian cross-frame match), `object_tracker.py` (UID-keyed `ObjectMemory` for an episode), `object_relations.py` (same-color / same-shape / adjacency groups — feeds the prompt with relations, not just bboxes).
+- **Memory** — `action_inference.py` (`OutcomeLog`, `StepOutcome`, `detect_stuck`, `detect_collapse`, `summarize_action` → `LearnedActionMap`), `world_model.py` (persistent A3 state across steps), `click_candidates.py` (ACTION6 coordinate proposals), `knowledge.py` (the v3.2 cross-round `Knowledge` object: `action_semantics`, `goal_hypothesis` + confidence, `rules`, `failed_strategies`; mutated by Reflection deltas), `step_summary.py` (per-step bundle the orchestrator hands to Reflection — also exports `compute_matches_reasoning` for grounding checks).
+- **Reasoner — v3 single-agent** — `prompts_v3.py` (8-block prompt builder: `[STATUS] [ACTIVE] [TEXTURE] [ACTION] [UNTRIED] [HISTORY] [GOAL] [ASK]`), `agents/text_agent.py` (v3 main agent — text-only Qwen + anti-collapse), `vlm_backbone.py` (Qwen2.5-VL loader with lazy `torch/transformers` import).
+- **Reasoner — v3.2 dual-agent** — `prompts_v3_2.py` (`build_action_user_prompt` prepends `[REFLECTION ALERT]` + `[KNOWLEDGE]` above v3 blocks and replaces `[ASK]` with a two-line reasoning+action ask; `build_reflection_user_prompt` for the JSON-delta producer), `agents/action_agent.py` (per-step decision; inherits v3 perception/memory/anti-collapse, returns `(GameAction, reasoning_text)`), `agents/reflection_agent.py` (per-step JSON delta producer; tolerates ```json fences and prose; returns empty delta on parse failure), `action_mask.py` (orchestrator-side filter that hard-blocks actions Reflection flagged as ineffective — `compute_action_mask(outcome_log, knowledge, legal_actions)`).
+- **Reflection / mistakes (v3 line)** — `agents/reflect.py` (PlayReflectAgent A3/A4), `mistakes.py` (deterministic mistake detectors).
+- **Run plumbing** — `runner.py` (`Agent` Protocol + `play_one`), `baseline.py` (`play_one_with_trace` — trace.jsonl + step PNGs + play.gif), `viz.py` (4-quadrant `compose_step_image` + `write_gif`), `viz_v3_2.py` (v3.2 step PNG with Knowledge / Reflection panels), `observation.py` (`grid_to_image`, `serialize_step`), `eval_split.py` (`demo_555_split`, `write_summary`).
 - **Other agents (baselines / ablation)** — `agents/random.py`, `agents/llm.py` (Claude API), `agents/vlm.py` (image-input VLM, used in v1 ablations), `agents/vlm_lite.py` (A1).
 - **RL line (parked)** — `rewards.py` (F1 verifier primitives), `train_grpo.py` (`reward_fn` + lazy `trl` trainer factory). Keep tests passing but no active iteration.
 - **Report / audit** — `report.py` (per-(agent, game) summary aggregator). Companion scripts: `scripts/audit_traces.py`, `scripts/audit_illegal_actions.py`, `scripts/audit_action6_misuse.py`, `scripts/analyze_failures.py`, `scripts/compare_summaries.py`, `scripts/build_v3_visual_report.py`, `scripts/report_v3_vs_v1.py`, `scripts/report_ablation.py`.
@@ -113,8 +116,13 @@ A real `ARC_API_KEY` from https://arcprize.org/api-keys must be in `.env` at the
 # Batch eval — LLMAgent on three keyboard games, 3 episodes each
 .venv/Scripts/python.exe scripts/eval.py --agent llm --games ls20,tr87,wa30 --episodes 3 --tag llm_keyboard
 
-# v3 TextAgent eval on G_base (current main path; needs torch + transformers + Qwen weights)
+# v3 TextAgent eval on G_base (single-agent line; needs torch + transformers + Qwen weights)
 .venv/Scripts/python.exe scripts/run_v3_eval.py
+
+# v3.2 multi-round orchestrator — Action+Reflection+Knowledge across rounds
+# Knowledge persists across rounds; ObjectMemory/OutcomeLog reset per round.
+# Use --dry-run to exercise the loop without ARC_API_KEY or Qwen weights.
+.venv/Scripts/python.exe scripts/run_v3_multi_round.py --game ar25 --rounds 5 --max-actions 80
 ```
 
 `scripts/eval.py` flags: `--agent {random,llm,llm-haiku}`, `--games <comma-list-or-prefix>` (empty = all demo), `--episodes N`, `--max-actions N` (default 80), `--tag <label>`, `--output <path>`. Writes one jsonl row per (game, episode) plus a final `__summary__` row to `outputs/runs/<ts>_<tag>.jsonl`.

@@ -92,9 +92,23 @@ Your two main jobs:
         WRITE the entry. You can REFINE it next time you observe the
         same action. An empty action_semantics after 5+ steps is a FAILURE.
         Concrete rule: if primary_direction is not null, the entry MUST
-        name the direction + distance + what kind of object moved.
+        name the direction + distance + a CONCRETE SUBJECT for what moved.
+        A concrete subject is one of:
+          * a color name        (e.g. "the red 1x1", "the yellow square")
+          * an obj_id           (e.g. "obj_002")
+          * a shape descriptor  (e.g. "the 2x2 block", "the L-shape")
+        "an active object" / "the object" / "a tracked object" are NOT
+        subjects -- they fail to distinguish which object moved when
+        multiple actives exist, and the orchestrator will DROP such updates.
         If frame_changed=False, write "ACTION_X at <coords>: no observable
         effect" so the agent stops trying it.
+      - When you previously wrote an action_semantics entry and a later
+        step shows a DIFFERENT effect (e.g. earlier "ACTION7 reshapes the
+        red square", later "ACTION7 moves the yellow 1x1 DOWN 3"), do NOT
+        clobber the entry with the newest observation. Instead write a
+        CONDITIONAL form that preserves both:
+          "ACTION7: reshapes the red square when adjacent to a target;
+                    moves the yellow 1x1 DOWN by 3 cells otherwise"
       - rules: append a one-line pattern when 2+ steps agree
         (e.g. "ACTION6 has no effect on any tested coord").
       - failed_strategies: append when a strategy or coord region has
@@ -112,6 +126,14 @@ Your two main jobs:
         - state_revisit_count >= 3 (the agent is in a loop)
         - same action chosen 5+ times in a row with no progress
         - reasoning is generic/non-committal for 3+ steps
+        - the [EXPLORATION HINT] block lists untried actions or uninteracted
+          objects AND the Action Agent has ignored them for 5+ steps. In
+          this case the alert MUST name one specific untried action OR one
+          uninteracted obj_id and tell the agent to try it next step.
+        - the [EXPLORATION HINT] STUCK line is present (masked frame hash
+          is repeating). When that line is present, the alert SHOULD tell
+          the agent to abandon the current goal_hypothesis and try a
+          completely different action category.
       Make the alert SHORT (<140 chars) and SPECIFIC (name the action,
       the wrong expectation, and what to try). Otherwise leave it "".
 
@@ -127,16 +149,22 @@ Output STRICT JSON only -- no prose, no markdown fences:
 }
 
 Concrete worked example. Suppose step 4 outcome is:
-  action=ACTION1, frame_changed=True, primary_direction=UP, distance=3
-Correct response:
+  action=ACTION1, frame_changed=True, primary_direction=UP, distance=3,
+  moved object: obj_002 (color=yellow, shape=1x1)
+Correct response (note the SUBJECT -- yellow 1x1 obj_002 -- is named):
 {
-  "action_semantics_update": {"ACTION1": "moves an active object UP by 3 cells"},
+  "action_semantics_update": {"ACTION1": "moves the yellow 1x1 (obj_002) UP by 3 cells"},
   "goal_hypothesis_update": null,
   "goal_confidence_update": null,
   "rules_append": [],
   "failed_strategies_append": [],
   "current_alert": ""
 }
+
+WRONG example (the orchestrator will DROP this update):
+  "action_semantics_update": {"ACTION1": "moves an active object UP by 3 cells"}
+                                          ^^^^^^^^^^^^^^^^^^^
+                                          no subject -- which object?
 
 Every field is REQUIRED. Use {} / [] / "" / null for "no update".
 """
@@ -166,6 +194,7 @@ def build_action_user_prompt(
     click_candidates: Optional[list[Any]] = None,
     blocked_actions: Optional[set[str]] = None,
     object_relations: Optional[Any] = None,
+    exploration_hint: Optional[str] = None,
 ) -> str:
     """Compose the Action Agent USER prompt.
 
@@ -219,6 +248,12 @@ def build_action_user_prompt(
             "  or you've exhausted higher-priority options."
         )
     blocks.append("[KNOWLEDGE - accumulated across rounds]\n" + knowledge.render())
+    if exploration_hint:
+        # Deterministic, orchestrator-computed list of unexplored actions /
+        # uninteracted objects + optional stuck signal. Placed right after
+        # KNOWLEDGE so the LLM sees what's NOT in Knowledge before reading
+        # the v3 enriched context below.
+        blocks.append(exploration_hint)
     blocks.append(v3_body_no_ask)
     blocks.append(_ACTION_ASK_BLOCK)
     return "\n\n".join(blocks)
@@ -250,6 +285,7 @@ def build_reflection_user_prompt(
     object_memory: Optional[Any] = None,
     outcome_log: Optional[Any] = None,
     object_relations: Optional[Any] = None,
+    exploration_hint: Optional[str] = None,
 ) -> str:
     """Compose the Reflection USER prompt.
 
@@ -265,6 +301,13 @@ def build_reflection_user_prompt(
     """
     blocks: list[str] = []
     blocks.append("[CURRENT KNOWLEDGE before this step]\n" + knowledge.render())
+
+    if exploration_hint:
+        # Same deterministic block the Action Agent will see on the NEXT
+        # step. Putting it here lets Reflection write a current_alert that
+        # references unexplored actions / objects when it judges the agent
+        # has been ignoring them.
+        blocks.append(exploration_hint)
 
     # Status block when env-context provided
     if step is not None and max_steps is not None:
@@ -334,6 +377,9 @@ For goal_hypothesis_update specifically:
       * Active object + same-color static object -> match them
   - DO NOT write action-style goals ("ACTION_X should ...") -- that's
     action_semantics, not a goal.
+  - DO NOT re-propose any goal that already appears in `rejected_goals`
+    in the KNOWLEDGE block above. Those have been tried and disproved;
+    the orchestrator will silently drop them.
   - If you have insufficient evidence, set goal_hypothesis_update to
     null. Do NOT write "unknown" / "none" / "" as a string.
 

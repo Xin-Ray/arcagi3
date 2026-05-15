@@ -122,16 +122,18 @@ def test_render_alert_block() -> None:
 
 def test_merge_action_semantics_update_per_key_overwrite() -> None:
     k = Knowledge.empty("ar25")
-    k.action_semantics = {"ACTION1": "moves up"}
-    delta = {"action_semantics_update": {"ACTION1": "moves up 1 cell",
-                                         "ACTION3": "moves left"}}
+    k.action_semantics = {"ACTION1": "moves the red 1x1 up"}
+    # BUG-9: positive-motion values MUST name a subject (color / obj_id /
+    # shape word like "1x1"/"square") or they get dropped.
+    delta = {"action_semantics_update": {"ACTION1": "moves the red 1x1 up 1 cell",
+                                         "ACTION3": "moves the yellow square left"}}
     k2 = k.merged_with_delta(delta)
     assert k2.action_semantics == {
-        "ACTION1": "moves up 1 cell",
-        "ACTION3": "moves left",
+        "ACTION1": "moves the red 1x1 up 1 cell",
+        "ACTION3": "moves the yellow square left",
     }
     # Original is unchanged (immutability via copy)
-    assert k.action_semantics == {"ACTION1": "moves up"}
+    assert k.action_semantics == {"ACTION1": "moves the red 1x1 up"}
 
 
 def test_merge_goal_hypothesis_replaces() -> None:
@@ -402,11 +404,12 @@ def test_R4_handles_same_delta_with_action_semantics_and_contradiction() -> None
     k = Knowledge.empty("ar25")
 
     delta = {
-        "action_semantics_update": {"ACTION1": "moves UP 3 cells"},
+        # BUG-9: must name a subject ('red 1x1') for positive-motion entry
+        "action_semantics_update": {"ACTION1": "moves the red 1x1 UP 3 cells"},
         "rules_append": ["ACTION1 has no effect"],
     }
     k2 = k.merged_with_delta(delta)
-    assert k2.action_semantics["ACTION1"] == "moves UP 3 cells"
+    assert k2.action_semantics["ACTION1"] == "moves the red 1x1 UP 3 cells"
     assert "ACTION1 has no effect" not in k2.rules
 
 
@@ -529,3 +532,161 @@ def test_append_round_summary_skips_blank() -> None:
     k.append_round_summary("")
     k.append_round_summary("   ")
     assert k.round_history == []
+
+
+# ── BUG-8: rejected_goals (negative memory across overwrites) ─────────────
+
+
+def test_BUG8_overwriting_goal_pushes_old_to_rejected() -> None:
+    """When Reflection writes a new goal_hypothesis_update that differs
+    from the existing non-empty hypothesis, the old one must be archived
+    into rejected_goals — otherwise the agent re-proposes wrong goals
+    forever (observed in ar25 2x80 trace: step 0 -> step 5 -> step 61
+    each silently overwrote the previous hypothesis)."""
+    k = Knowledge.empty("ar25")
+    k.goal_hypothesis = "move the active object to the edge"
+
+    k2 = k.merged_with_delta({"goal_hypothesis_update": "reshape objects"})
+
+    assert k2.goal_hypothesis == "reshape objects"
+    assert "move the active object to the edge" in k2.rejected_goals
+
+
+def test_BUG8_rejected_goal_blocks_re_proposal() -> None:
+    """Once a goal is in rejected_goals, a later delta that proposes the
+    same string must be DROPPED (not re-installed as the active goal)."""
+    k = Knowledge.empty("ar25")
+    k.rejected_goals = ["reach the top edge"]
+    k.goal_hypothesis = "match red dots"
+
+    k2 = k.merged_with_delta({"goal_hypothesis_update": "reach the top edge"})
+
+    assert k2.goal_hypothesis == "match red dots"   # not overwritten
+    # And the rejected_goals list is not double-counted
+    assert k2.rejected_goals == ["reach the top edge"]
+
+
+def test_BUG8_rejected_match_is_case_insensitive() -> None:
+    k = Knowledge.empty("ar25")
+    k.rejected_goals = ["Reach The Top Edge"]
+    k.goal_hypothesis = "valid prior"
+
+    k2 = k.merged_with_delta({"goal_hypothesis_update": "reach the top edge"})
+
+    assert k2.goal_hypothesis == "valid prior"
+
+
+def test_BUG8_same_value_overwrite_does_not_archive() -> None:
+    """If a delta repeats the existing hypothesis verbatim (very common —
+    Reflection often re-confirms), rejected_goals should NOT grow."""
+    k = Knowledge.empty("ar25")
+    k.goal_hypothesis = "reach the top edge"
+
+    k2 = k.merged_with_delta({"goal_hypothesis_update": "reach the top edge"})
+
+    assert k2.goal_hypothesis == "reach the top edge"
+    assert k2.rejected_goals == []
+
+
+def test_BUG8_first_goal_does_not_create_rejected_entry() -> None:
+    """Writing into an empty goal_hypothesis must not push the empty
+    string into rejected_goals."""
+    k = Knowledge.empty("ar25")
+
+    k2 = k.merged_with_delta({"goal_hypothesis_update": "reach the top edge"})
+
+    assert k2.goal_hypothesis == "reach the top edge"
+    assert k2.rejected_goals == []
+
+
+def test_BUG8_rejected_goals_capped_at_10() -> None:
+    """rejected_goals must not grow unbounded across many overwrites."""
+    k = Knowledge.empty("ar25")
+    for i in range(15):
+        k = k.merged_with_delta({"goal_hypothesis_update": f"goal {i:02d}"})
+    assert len(k.rejected_goals) == 10
+    # Newest evicted -> only the last few archived; current goal is the latest
+    assert k.goal_hypothesis == "goal 14"
+
+
+def test_BUG8_render_includes_rejected_goals() -> None:
+    """Reflection must SEE the rejected list when it builds the next delta —
+    so render() has to include it."""
+    k = Knowledge.empty("ar25")
+    k.rejected_goals = ["reach the bottom", "reshape objects"]
+
+    text = k.render()
+    assert "rejected_goals" in text
+    assert "reach the bottom" in text
+    assert "reshape objects" in text
+
+
+def test_BUG8_rejected_goals_roundtrip_json() -> None:
+    """from_dict/to_dict must preserve rejected_goals across persistence."""
+    k = Knowledge.empty("ar25")
+    k.rejected_goals = ["wrong A", "wrong B"]
+    k.goal_hypothesis = "current"
+
+    s = json.dumps(k.to_dict())
+    k2 = Knowledge.from_dict(json.loads(s))
+    assert k2.rejected_goals == ["wrong A", "wrong B"]
+
+
+# ── BUG-9: action_semantics must name a subject ──────────────────────────
+
+
+def test_BUG9_drops_movement_claim_without_subject() -> None:
+    """'moves an active object UP by 3' is uninformative when multiple
+    actives exist. Drop it — keep whatever was there before."""
+    k = Knowledge.empty("ar25")
+    k.action_semantics = {"ACTION1": "moves the red 1x1 UP by 3"}
+
+    bad = {"action_semantics_update": {"ACTION1": "moves an active object UP by 3 cells"}}
+    k2 = k.merged_with_delta(bad)
+
+    assert k2.action_semantics == {"ACTION1": "moves the red 1x1 UP by 3"}
+
+
+def test_BUG9_accepts_subject_by_color() -> None:
+    k = Knowledge.empty("ar25")
+    delta = {"action_semantics_update": {"ACTION1": "moves the yellow object UP by 3"}}
+    k2 = k.merged_with_delta(delta)
+    assert k2.action_semantics["ACTION1"] == "moves the yellow object UP by 3"
+
+
+def test_BUG9_accepts_subject_by_obj_id() -> None:
+    k = Knowledge.empty("ar25")
+    delta = {"action_semantics_update": {"ACTION1": "moves obj_002 UP by 3 cells"}}
+    k2 = k.merged_with_delta(delta)
+    assert "obj_002" in k2.action_semantics["ACTION1"]
+
+
+def test_BUG9_accepts_subject_by_shape_size() -> None:
+    k = Knowledge.empty("ar25")
+    delta = {"action_semantics_update": {"ACTION1": "moves the 2x2 block UP by 1"}}
+    k2 = k.merged_with_delta(delta)
+    assert "2x2" in k2.action_semantics["ACTION1"]
+
+
+def test_BUG9_does_not_filter_negative_claims() -> None:
+    """'no observable effect' is a valid no-op semantic and must pass even
+    without a subject — there's no object being claimed to move."""
+    k = Knowledge.empty("ar25")
+    delta = {"action_semantics_update": {
+        "ACTION6": "no observable effect at any tested coord",
+    }}
+    k2 = k.merged_with_delta(delta)
+    assert "no observable effect" in k2.action_semantics["ACTION6"]
+
+
+def test_BUG9_drops_only_offending_key_in_mixed_delta() -> None:
+    """A delta with one good entry and one bad entry should apply the
+    good one and silently drop the bad one."""
+    k = Knowledge.empty("ar25")
+    delta = {"action_semantics_update": {
+        "ACTION1": "moves an active object UP",       # bad
+        "ACTION2": "moves the blue 1x1 DOWN by 2",    # good
+    }}
+    k2 = k.merged_with_delta(delta)
+    assert "ACTION1" not in k2.action_semantics
+    assert k2.action_semantics["ACTION2"] == "moves the blue 1x1 DOWN by 2"

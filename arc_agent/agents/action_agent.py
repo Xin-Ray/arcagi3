@@ -37,6 +37,11 @@ from arc_agent.click_candidates import (
     list_click_candidates,
     pick_default_action6_coords,
 )
+from arc_agent.exploration import (
+    compute_uninteracted_objects,
+    compute_untried_actions,
+    render_exploration_hint,
+)
 from arc_agent.knowledge import Knowledge
 from arc_agent.object_aligner import align_objects
 from arc_agent.object_extractor import extract_objects
@@ -44,11 +49,21 @@ from arc_agent.object_relations import compute_relations
 from arc_agent.object_tracker import ObjectMemory
 from arc_agent.observation import available_action_names, latest_grid
 from arc_agent.prompts_v3_2 import ACTION_SYSTEM, build_action_user_prompt
+from arc_agent.stuck_detector import (
+    compute_noise_mask,
+    detect_repeat_stuck,
+    masked_grid_hash,
+)
 from arc_agent.temporal_classifier import (
     classify_frame,
     filter_active,
     update_history,
 )
+
+# Rolling history depth for the masked-frame-hash stuck detector. 20 is wide
+# enough to catch slow loops (A1-A1-A1-A2-A1-A2-... type oscillations) without
+# bloating memory or noise-mask compute time.
+_GRID_HISTORY_DEPTH = 20
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +109,18 @@ class _ActionAgentState:
     parse_failures: int = 0
     frame_hashes: list = field(default_factory=list)
     tried_action6_coords: list = field(default_factory=list)
+
+    # 2026-05-14: progress-bar-aware stuck detection.
+    # `grid_history` is a rolling buffer of the last N grids (np.ndarray);
+    # `masked_frame_hashes` is the parallel list of noise-masked hashes used
+    # by `detect_repeat_stuck` to catch loops that the raw-hash detector
+    # misses when a UI counter changes every frame.
+    grid_history: list = field(default_factory=list)
+    masked_frame_hashes: list = field(default_factory=list)
+
+    # Last computed exploration hint string -- the orchestrator reads this
+    # and forwards it to the Reflection Agent so both see the same set.
+    last_exploration_hint: str = ""
 
 
 class ActionAgent:
@@ -175,6 +202,33 @@ class ActionAgent:
         )
         self._state.frame_hashes.append(hash(grid.tobytes()))
 
+        # 3b) progress-bar-aware stuck detection (parallel signal).
+        # Maintain a rolling grid history, compute a noise mask of pixels
+        # that change too often (counters / progress bars), and hash with
+        # those pixels zeroed. Same-state-revisit on this masked hash is
+        # what survives a per-step counter.
+        self._state.grid_history.append(grid)
+        if len(self._state.grid_history) > _GRID_HISTORY_DEPTH:
+            self._state.grid_history = self._state.grid_history[-_GRID_HISTORY_DEPTH:]
+        noise_mask = compute_noise_mask(self._state.grid_history)
+        masked_h = masked_grid_hash(grid, noise_mask)
+        self._state.masked_frame_hashes.append(masked_h)
+        repeat_stuck, repeat_stuck_reason, _ = detect_repeat_stuck(
+            self._state.masked_frame_hashes,
+        )
+
+        # 3c) build the exploration hint that goes into BOTH prompts. The
+        # untried-action set is deterministic from OutcomeLog; the
+        # uninteracted-object set is deterministic from ObjectMemory.
+        untried_acts = compute_untried_actions(self._state.outcome_log, legal_names)
+        uninteracted = compute_uninteracted_objects(self._state.object_memory)
+        exploration_hint = render_exploration_hint(
+            untried_actions=untried_acts,
+            uninteracted_objects=uninteracted,
+            stuck_reason=repeat_stuck_reason if repeat_stuck else None,
+        )
+        self._state.last_exploration_hint = exploration_hint
+
         # 4) build v3.2 user prompt (knowledge + alert prepended)
         diversification = None
         if detect_collapse(self._state.outcome_log, self.COLLAPSE_WINDOW):
@@ -228,6 +282,7 @@ class ActionAgent:
             click_candidates=click_cands,
             blocked_actions=blocked,
             object_relations=relations,
+            exploration_hint=exploration_hint or None,
         )
         self._state.last_prompt = ACTION_SYSTEM + "\n\n" + user_prompt
 

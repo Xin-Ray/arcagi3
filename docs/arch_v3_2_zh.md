@@ -763,17 +763,49 @@ v3.1 的 P0-A、P0-B、P1 改动**全部继承**。v3.2 在它们的基础上加
 **原因**: ar25 这局 LLM 探索还算多样,没真正卡死。但阈值 5 可能略宽。
 **候选修法**: 阈值调到 3-4,**或**改为"在最近 K 步内出现 >= 50% no-op 即触发"。
 
+#### <span style="color: #ff4444">🔴 BUG-8 — goal_hypothesis 直接覆盖,旧目标无负向记忆</span> **用户提出**
+
+**严重度**: 高 (跨 round 学不到东西)
+**复现**: `outputs/v3_2_ar25_2x80_ABCD/round_00/knowledge_per_step.jsonl` —
+- step 0:  `'move the active object to the edge'`
+- step 5:  覆写为 `'reshape objects'` → step 0 假设永久消失
+- step 61: 覆写为 `'align the two yellow objects horizontally'` → step 5 假设也消失
+
+**原因**: `knowledge.py:merged_with_delta` 直接 `new.goal_hypothesis = _clip(goal_upd)`。`Knowledge` 没有 `rejected_goals` / `goal_history` 字段。下一 round 模型可能又写一个 `'reach the edge'`,被同样地覆盖,**等于无限循环试同一组错假设**。
+**候选修法**:
+1. 加 `Knowledge.rejected_goals: list[str]`(cap 10)。`merged_with_delta` 替换 `goal_hypothesis` 前把旧值 push 到 `rejected_goals`(dedup, case-insensitive)。
+2. `merged_with_delta` 接到的新候选若 lowercase 已在 `rejected_goals` 内 → 直接 DROP(不覆盖,不污染)。
+3. `render()` 把 `rejected_goals` 渲染进 [KNOWLEDGE] 块,Reflection 下次会看到 "这些目标试过且被否定,不要重提"。
+4. 类比修法对 `action_semantics`(BUG-2 同源):当 ACTION 的 semantic 从 "reshapes objects" 改成 "moves DOWN 3" 时,把旧的 append 到一个 `action_semantics_archive: dict[str, list[str]]` 里。LLM 看到 "ACTION7 历史观察过的效果: reshapes / moves DOWN 3 / moves UP 3" 才能推理出 "效果取决于上下文"。
+
+#### <span style="color: #ff4444">🔴 BUG-9 — action_semantics 写的是 "an active object",没有主语</span> **用户提出**
+
+**严重度**: 高 (Knowledge 文本无信息)
+**复现**: 实测 `knowledge_after.action_semantics` 全部长这样:
+- `ACTION1: moves an active object UP by 3 cells`
+- `ACTION2: moves an active object DOWN by 3 cells`
+- `ACTION7: moves an active object DOWN by 3 cells`   ← 跟 ACTION2 完全无区别
+
+`knowledge.py:11` 注释里的示例本来是 `"moves the red 1x1 up 1 cell"`(带主语),但实际 Reflection 输出永远是 "an active object" 这种通用语。
+**原因**: `prompts_v3_2.REFLECTION_SYSTEM` 的 worked example 直接写的就是 `"moves an active object UP by 3 cells"`(line 133),教坏了模型。`merged_with_delta` 也没有任何 subject 验证。多个 active object 同时存在时,这句话不能区分"哪个被移动"。
+**候选修法**:
+1. Reflection SYSTEM prompt 改硬约束:action_semantics 的 value MUST 含 (颜色名 OR obj_id OR shape 描述符)。例: `"moves the yellow 1x1 obj_002 UP by 3 cells"`、`"moves the red square down 3"`。
+2. worked example 改用带颜色 / obj_id 的句子,不再示范 "an active object"。
+3. `knowledge.py:merged_with_delta` 加 subject 校验:若 update 的 value 含 positive movement 词(`moves` / `shifts` / `rotates` 等)但 NO subject keyword(颜色 / shape 词 / `obj_` 前缀),DROP 该 key、保留旧值。no-op / 负向 semantic(`"no observable effect"`)不应被此过滤误伤。
+
 ### 13.3 🟡 下一步优先级 (建议)
 
 按用户反馈强度排序:
 
-1. **BUG-5 (round 提早结束)** —— 关键,立即修。CLI 不再传 --max-actions 80,游戏自己决定何时停。
-2. **BUG-2 (action_semantics 覆写)** —— 用户明确提到 + 影响 Knowledge 质量。先做简单版 (Reflection prompt conditional 形式),后考虑 schema 升级。
-3. **BUG-6 (per-claim confidence)** —— 用户明确提到。配合 BUG-2 一起改 Reflection schema。
-4. **BUG-1 (reasoning N/A 91%)** —— Action SYSTEM prompt 加 direction 强制。
-5. **BUG-4 (ACTION6 coord memory)** —— [ACTION6 TRIED COORDS] 块。
-6. **BUG-3 (重复 semantic)** —— Reflection prompt 微调。
-7. **BUG-7 (C 阈值)** —— 调 3-4。
+1. **BUG-8 (goal_hypothesis 直接覆盖)** —— 用户最新强调。加 `rejected_goals` 负向记忆。**当前批次先修。**
+2. **BUG-9 (action_semantics 无主语)** —— 用户最新强调。Reflection prompt + subject 校验。**当前批次先修。**
+3. **BUG-5 (round 提早结束)** —— 关键,立即修。CLI 不再传 --max-actions 80,游戏自己决定何时停。
+4. **BUG-2 (action_semantics 覆写)** —— 用户明确提到 + 影响 Knowledge 质量。先做简单版 (Reflection prompt conditional 形式),后考虑 schema 升级(跟 BUG-8 同源 — 都是覆盖式 schema)。
+5. **BUG-6 (per-claim confidence)** —— 用户明确提到。配合 BUG-2 一起改 Reflection schema。
+6. **BUG-1 (reasoning N/A 91%)** —— Action SYSTEM prompt 加 direction 强制。
+7. **BUG-4 (ACTION6 coord memory)** —— [ACTION6 TRIED COORDS] 块。
+8. **BUG-3 (重复 semantic)** —— Reflection prompt 微调。
+9. **BUG-7 (C 阈值)** —— 调 3-4。
 
 ---
 

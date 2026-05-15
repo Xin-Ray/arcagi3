@@ -38,6 +38,7 @@ _VALID_CONFIDENCE = ("low", "medium", "high")
 _RULES_CAP = 10
 _FAILED_CAP = 5
 _ROUND_HISTORY_CAP = 20
+_REJECTED_GOALS_CAP = 10
 _SHORT_TEXT_CAP = 200  # per-field char cap to keep prompts bounded
 
 # Reject these literal strings as goal_hypothesis_update. Reflection
@@ -133,6 +134,69 @@ def _has_positive_semantic(action_semantics: dict[str, str], action: str) -> boo
     return any(hint in low for hint in _POSITIVE_SEMANTIC_HINTS)
 
 
+# BUG-9 fix: action_semantics MUST identify which object is acted on,
+# otherwise the entry is uninformative when multiple active objects exist.
+# A "subject" is any of:
+#   - a color name (red / blue / yellow / ...)
+#   - an obj_id pattern (obj_NNN or obj_NN)
+#   - a shape descriptor (1x1, 2x2, NxM in general, "square", "rectangle", "L-shape", "pixel")
+# A positive movement claim ("moves" / "shifts" / "rotates" / etc.) WITHOUT
+# any of these is rejected. No-op claims ("no observable effect") pass.
+_SUBJECT_COLORS = (
+    "red", "orange", "yellow", "green", "cyan", "blue", "purple", "magenta",
+    "pink", "brown", "white", "black", "gray", "grey", "teal",
+)
+_SUBJECT_SHAPE_WORDS = (
+    "square", "rectangle", "line", "l-shape", "l shape", "pixel", "block",
+    "dot", "row", "column",
+)
+_SUBJECT_OBJ_ID_RE = _re.compile(r"\bobj[_-]?\d+\b", _re.IGNORECASE)
+_SUBJECT_SIZE_RE = _re.compile(r"\b\d+\s*[xX]\s*\d+\b")  # "1x1", "2 x 3"
+_POSITIVE_MOTION_HINTS = (
+    "moves", "move", "moved", "shifts", "shifted", "shift",
+    "rotates", "rotated", "rotate",
+    "advances", "advanced", "advance",
+    "places", "placed", "place",
+    "drops", "dropped", "drop",
+)
+
+
+def _has_subject(text: str) -> bool:
+    """True if `text` names a concrete subject (color / obj_id / shape)."""
+    if not text:
+        return False
+    low = text.lower()
+    if any(c in low for c in _SUBJECT_COLORS):
+        return True
+    if _SUBJECT_OBJ_ID_RE.search(text):
+        return True
+    if _SUBJECT_SIZE_RE.search(text):
+        return True
+    if any(w in low for w in _SUBJECT_SHAPE_WORDS):
+        return True
+    return False
+
+
+def _is_positive_movement_claim(text: str) -> bool:
+    """True if `text` claims an action moves/shifts/rotates something."""
+    if not text:
+        return False
+    low = text.lower()
+    # negation phrases override — "no observable effect" should not be
+    # treated as a movement claim even though "effect" is in there
+    if any(neg in low for neg in _NEGATION_PHRASES):
+        return False
+    return any(hint in low for hint in _POSITIVE_MOTION_HINTS)
+
+
+def _action_semantic_passes_subject_check(value: str) -> bool:
+    """True iff `value` is either (a) not a positive movement claim, or
+    (b) a positive movement claim that names a concrete subject. BUG-9 gate."""
+    if not _is_positive_movement_claim(value):
+        return True
+    return _has_subject(value)
+
+
 def _clip(s: Any, cap: int = _SHORT_TEXT_CAP) -> str:
     if s is None:
         return ""
@@ -156,6 +220,12 @@ class Knowledge:
     rules: list[str] = field(default_factory=list)
     failed_strategies: list[str] = field(default_factory=list)
     round_history: list[str] = field(default_factory=list)
+
+    # BUG-8 fix: goals that were proposed and later overwritten by a
+    # different hypothesis. Kept so Reflection sees them and does NOT
+    # re-propose. Append-only (dedup, case-insensitive); capped at
+    # _REJECTED_GOALS_CAP.
+    rejected_goals: list[str] = field(default_factory=list)
 
     current_alert: str = ""
 
@@ -183,6 +253,7 @@ class Knowledge:
             rules=list(d.get("rules", [])),
             failed_strategies=list(d.get("failed_strategies", [])),
             round_history=list(d.get("round_history", [])),
+            rejected_goals=list(d.get("rejected_goals", [])),
             current_alert=str(d.get("current_alert", "")),
         )
 
@@ -211,6 +282,10 @@ class Knowledge:
             )
         else:
             lines.append("  goal_hypothesis: (unknown - still exploring)")
+        if self.rejected_goals:
+            lines.append("  rejected_goals (tried and disproved, do NOT re-propose):")
+            for g in self.rejected_goals:
+                lines.append(f"    - {g}")
         if self.rules:
             lines.append("  rules:")
             for r in self.rules:
@@ -243,12 +318,19 @@ class Knowledge:
 
         new = self._copy()
 
-        # action_semantics_update — per-key overwrite
+        # action_semantics_update — per-key overwrite.
+        # BUG-9: drop entries that claim positive movement without naming a
+        # concrete subject (color / obj_id / shape). "moves an active object
+        # UP" is uninformative when multiple active objects exist; we keep
+        # the existing entry instead of letting it be clobbered.
         sem_upd = delta.get("action_semantics_update") or {}
         if isinstance(sem_upd, dict):
             for k, v in sem_upd.items():
                 if isinstance(k, str) and v is not None:
-                    new.action_semantics[k] = _clip(v)
+                    clipped = _clip(v)
+                    if not _action_semantic_passes_subject_check(clipped):
+                        continue
+                    new.action_semantics[k] = clipped
 
         # R5: prospective failed_strategies set (existing + to-be-appended)
         # used to cross-check goal_hypothesis_update below. Reflection
@@ -263,19 +345,34 @@ class Knowledge:
             if s_str:
                 prospective_failed_lower.add(s_str.lower())
 
-        # goal_hypothesis_update — replace only when it passes all three
+        # goal_hypothesis_update — replace only when it passes all four
         # quality gates. A goal MUST describe a target state, not a sentinel
-        # ("unknown"), not a failed strategy, and not an action description.
+        # ("unknown"), not a failed strategy, not an action description, and
+        # not a goal we've already rejected.
         # R1: reject sentinel placeholders.
         # R5: reject failed_strategies cross-pollution.
         # R6: reject action-described goals ("ACTION_X should ...").
+        # BUG-8: reject goals already in rejected_goals (negative memory).
+        rejected_lower = {g.strip().lower() for g in new.rejected_goals}
         goal_upd = delta.get("goal_hypothesis_update")
         if (goal_upd is not None
                 and not _is_goal_sentinel(goal_upd)
                 and not _is_action_described_goal(goal_upd)):
             candidate = str(goal_upd).strip()
-            if candidate.lower() not in prospective_failed_lower:
-                new.goal_hypothesis = _clip(goal_upd)
+            candidate_low = candidate.lower()
+            if (candidate_low not in prospective_failed_lower
+                    and candidate_low not in rejected_lower):
+                # BUG-8: when overwriting a different, non-empty existing
+                # goal, archive the old one so it isn't re-proposed later.
+                clipped_new = _clip(goal_upd)
+                old_goal = new.goal_hypothesis.strip()
+                if (old_goal
+                        and old_goal.lower() != clipped_new.lower()
+                        and old_goal.lower() not in rejected_lower):
+                    new.rejected_goals.append(old_goal)
+                    if len(new.rejected_goals) > _REJECTED_GOALS_CAP:
+                        new.rejected_goals = new.rejected_goals[-_REJECTED_GOALS_CAP:]
+                new.goal_hypothesis = clipped_new
 
         # goal_confidence_update — replace if valid
         conf_upd = delta.get("goal_confidence_update")
@@ -343,6 +440,7 @@ class Knowledge:
             rules=list(self.rules),
             failed_strategies=list(self.failed_strategies),
             round_history=list(self.round_history),
+            rejected_goals=list(self.rejected_goals),
             current_alert=self.current_alert,
         )
 
