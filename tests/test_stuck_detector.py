@@ -166,3 +166,84 @@ def test_repeat_stuck_min_repeats_tunable() -> None:
     is_stuck, _, count = detect_repeat_stuck(hashes, min_repeats=2)
     assert is_stuck is True
     assert count == 2
+
+
+# ── compute_orchestrator_alert ─────────────────────────────────────────
+
+
+from arc_agent.stuck_detector import compute_orchestrator_alert
+
+
+def test_orchestrator_alert_empty_when_no_signal() -> None:
+    assert compute_orchestrator_alert(
+        matches_reasoning="YES",
+        masked_stuck_reason="",
+        no_op_streak=0,
+        state_revisit=0,
+    ) == ""
+
+
+def test_orchestrator_alert_reasoning_mismatch_wins() -> None:
+    """matches_reasoning=NO is the highest-priority alert -- even when
+    other stuck signals fire, the mismatch message takes precedence."""
+    out = compute_orchestrator_alert(
+        matches_reasoning="NO",
+        masked_stuck_reason="loop detected",
+        no_op_streak=20,
+        state_revisit=20,
+        last_picks=["ACTION1", "ACTION1", "ACTION1"],
+    )
+    low = out.lower()
+    assert "reasoning" in low
+    assert "contradict" in low or "wrong" in low
+    # Should NOT also include the masked-stuck phrasing
+    assert "loop detected" not in out
+
+
+def test_orchestrator_alert_masked_stuck_beats_raw_signals() -> None:
+    """Masked-hash repeat (counter-aware) ranks above no_op_streak so the
+    LLM sees the goal-abandonment hint before the action-rotation hint."""
+    out = compute_orchestrator_alert(
+        matches_reasoning="N/A",
+        masked_stuck_reason="Same state seen 4x in last 8 steps",
+        no_op_streak=7,
+        state_revisit=7,
+    )
+    assert "Same state seen 4x" in out
+    assert "goal_hypothesis" in out.lower() or "abandon" in out.lower()
+
+
+def test_orchestrator_alert_no_op_streak_fires_above_threshold() -> None:
+    out = compute_orchestrator_alert(
+        matches_reasoning="N/A",
+        masked_stuck_reason="",
+        no_op_streak=5,
+        state_revisit=0,
+        last_picks=["ACTION6", "ACTION6", "ACTION6", "ACTION1", "ACTION6"],
+    )
+    assert "Stuck" in out
+    # culprit (most common) should be named
+    assert "ACTION6" in out
+
+
+def test_orchestrator_alert_state_revisit_fires_above_threshold() -> None:
+    out = compute_orchestrator_alert(
+        matches_reasoning="N/A",
+        masked_stuck_reason="",
+        no_op_streak=0,
+        state_revisit=6,
+        last_picks=["ACTION1"],
+    )
+    assert "Stuck" in out
+
+
+def test_orchestrator_alert_below_threshold_silent() -> None:
+    """A single no_op step is not stuck -- no alert."""
+    out = compute_orchestrator_alert(
+        matches_reasoning="N/A",
+        masked_stuck_reason="",
+        no_op_streak=2,
+        state_revisit=2,
+        last_picks=["ACTION1"],
+    )
+    assert out == ""

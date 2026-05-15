@@ -23,9 +23,10 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
+from arc_agent.action_inference import render_action_block
 from arc_agent.click_targets import ClickTarget, render_click_targets_block
 from arc_agent.knowledge import Knowledge
-from arc_agent.prompts_v3 import build_play_user_prompt
+from arc_agent.object_relations import render_relations_block
 from arc_agent.step_summary import StepSummary
 
 
@@ -33,151 +34,214 @@ from arc_agent.step_summary import StepSummary
 
 ACTION_SYSTEM = """You are the Action Agent for a turn-based 64x64 grid game.
 
-The Reflection Agent has provided KNOWLEDGE accumulated across previous
-rounds (and the previous steps of this round):
-  - action_semantics: what each ACTION does in this game (when known)
-  - goal_hypothesis: the most likely goal so far
-  - rules: patterns observed across previous rounds
-  - failed_strategies: strategies that were tried and did NOT work
+Each step you receive accumulated KNOWLEDGE (action_semantics,
+goal_hypothesis, rejected_goals, rules, failed_strategies) plus
+per-step perception. Trust the KNOWLEDGE block. Do NOT re-explore
+things in failed_strategies or re-propose goals in rejected_goals.
 
-Trust the KNOWLEDGE block. Do NOT re-explore things already documented
-as failed_strategies. If a [REFLECTION ALERT] block is present at the
-top of the prompt, the Reflection Agent has flagged that your previous
-mental model was wrong -- read it FIRST and change behavior accordingly.
+If an [ALERT] block is at the top, the orchestrator or Reflection has
+flagged that your previous mental model was wrong. Read it FIRST and
+change behavior.
 
-The user prompt also gives you v3 enriched context:
-  [STATUS]   step, level, legal actions (with parameter signatures)
-  [ACTIVE]   tracked objects with movement history
-  [TEXTURE]  static cells filtered out
-  [ACTION]   observed effects of each action THIS round
-  [UNTRIED]  legal actions you have not tried yet
-  [HISTORY]  the last 5 (action, frame_changed) tuples
-  [GOAL]     current hypothesis from v3 (the [KNOWLEDGE] goal is preferred
-             when they disagree)
+REASONING REQUIREMENTS (the Reflection Agent uses these to update
+KNOWLEDGE; vague reasoning starves the loop):
+  - Name a SUBJECT: an obj_id (e.g. obj_007) or a color+shape
+    (e.g. "the cyan 1x1"). Reasonings like "try edge" / "try a
+    different location" / "try another action" without a subject
+    are NOT acceptable.
+  - State the EXPECTED EFFECT: a direction (UP/DOWN/LEFT/RIGHT) or
+    an outcome ("places a marker", "advances the level").
+
+ACTION6 (coordinate click):
+  - PICK an obj_id from [CLICK TARGETS] and use ITS coords.
+  - Do NOT invent (x, y). Do NOT copy any specific (x, y) pair
+    verbatim from this system prompt or any block in the user prompt
+    -- the examples are placeholders, not targets.
+  - If all [CLICK TARGETS] have confidence < 0.3, ACTION6 is the
+    wrong tool -- pick a different ACTION.
 
 OUTPUT FORMAT (strict, two lines, no JSON, no markdown):
-  reasoning: <one sentence explaining your choice; mention the expected
-             effect so the Reflection Agent can judge it>
-  action: ACTION1..ACTION5 / ACTION7  (no params)
-          ACTION6 <x> <y>             (x, y in 0..63 -- ACTION6 ONLY)
+  reasoning: <subject + expected effect, one sentence>
+  action: <ACTION1..ACTION5 or ACTION7>         (no params)
+       or <ACTION6 x y>                         (x, y in 0..63)
 
-Valid:
-  reasoning: knowledge says ACTION1 moves the player up; goal is the top
+Examples (placeholders -- do NOT copy the numbers):
+  reasoning: ACTION1 moves the maroon 1x1 (obj_002) UP by 3 cells; goal is top edge
   action: ACTION1
 
-  reasoning: failed_strategies says clicking near (32,32) doesn't help; try edge
-  action: ACTION6 5 60
+  reasoning: clicking obj_007 (cyan 1x1 in [CLICK TARGETS]) to test if it advances level
+  action: ACTION6 <x_of_obj_007> <y_of_obj_007>
 
 INVALID:
-  Do NOT add coordinates to ACTION1..5 or ACTION7.
-  Do NOT output JSON. Just two plain lines: reasoning and action.
+  - Coordinates on ACTION1..5 or ACTION7
+  - JSON / markdown / extra prose
+  - Reasonings without a subject ("try edge" / "explore" alone)
 """
 
 
-REFLECTION_SYSTEM = """You are the Reflection Agent for an in-episode learning loop.
+REFLECTION_SYSTEM = """You are the Reflection Agent. You update Knowledge
+based on what just happened.
 
-After EACH step you see:
-  - The current KNOWLEDGE (what you've learned across all prior steps of
-    this round + all prior rounds of this game)
-  - The Action Agent's REASONING from this step (what it expected)
-  - This step's actual OUTCOME: action taken, what changed in the grid,
-    what moved in ObjectMemory, no_op_streak, state_revisit_count, and
-    a pre-computed matches_reasoning verdict (YES / PARTIAL / NO / N/A)
-  - The last 3 steps for short context
+Per-step inputs you see:
+  - Current KNOWLEDGE (action_semantics, goal_hypothesis, rejected_goals,
+    rules, failed_strategies, round_history)
+  - State context (active objects with positions, same-color groups, etc.)
+  - This step's action + reasoning + outcome + matches_reasoning verdict
+  - The last few steps for short context
+  - [EXPLORATION HINT] showing untried actions + uninteracted objects
 
-Your two main jobs:
+You output STRICT JSON with EXACTLY THREE fields. The orchestrator
+deterministically computes everything else (rules, failed_strategies,
+goal_confidence, stuck alerts) from OutcomeLog -- you do NOT write them.
 
-  (A) UPDATE KNOWLEDGE -- be EAGER, not cautious.
-      - action_semantics[ACTION_X]: as soon as you see ONE specific
-        effect (e.g. "frame_changed=True, primary_direction=UP, distance=3"),
-        WRITE the entry. You can REFINE it next time you observe the
-        same action. An empty action_semantics after 5+ steps is a FAILURE.
-        Concrete rule: if primary_direction is not null, the entry MUST
-        name the direction + distance + a CONCRETE SUBJECT for what moved.
-        A concrete subject is one of:
-          * a color name        (e.g. "the red 1x1", "the yellow square")
-          * an obj_id           (e.g. "obj_002")
-          * a shape descriptor  (e.g. "the 2x2 block", "the L-shape")
-        "an active object" / "the object" / "a tracked object" are NOT
-        subjects -- they fail to distinguish which object moved when
-        multiple actives exist, and the orchestrator will DROP such updates.
-        If frame_changed=False, write "ACTION_X at <coords>: no observable
-        effect" so the agent stops trying it.
-      - When you previously wrote an action_semantics entry and a later
-        step shows a DIFFERENT effect (e.g. earlier "ACTION7 reshapes the
-        red square", later "ACTION7 moves the yellow 1x1 DOWN 3"), do NOT
-        clobber the entry with the newest observation. Instead write a
-        CONDITIONAL form that preserves both:
-          "ACTION7: reshapes the red square when adjacent to a target;
-                    moves the yellow 1x1 DOWN by 3 cells otherwise"
-      - rules: append a one-line pattern when 2+ steps agree
-        (e.g. "ACTION6 has no effect on any tested coord").
-      - failed_strategies: append when a strategy or coord region has
-        clearly failed 3+ times. Keep these high-level (not "ACTION6"
-        bare -- say "ACTION6 anywhere in the right half").
-      - goal_hypothesis_update: ONLY when you have a real guess. If you
-        don't, set this to null (NOT the literal string "unknown").
-        Never write "unknown" / "none" / "" as a string -- use null.
-      - goal_confidence_update: raise/lower per evidence; null if no change.
-
-  (B) WRITE current_alert when the Action Agent's mental model is wrong.
-      Trigger an alert when ANY of these holds:
-        - matches_reasoning == "NO"
-        - no_op_streak >= 3
-        - state_revisit_count >= 3 (the agent is in a loop)
-        - same action chosen 5+ times in a row with no progress
-        - reasoning is generic/non-committal for 3+ steps
-        - the [EXPLORATION HINT] block lists untried actions or uninteracted
-          objects AND the Action Agent has ignored them for 5+ steps. In
-          this case the alert MUST name one specific untried action OR one
-          uninteracted obj_id and tell the agent to try it next step.
-        - the [EXPLORATION HINT] STUCK line is present (masked frame hash
-          is repeating). When that line is present, the alert SHOULD tell
-          the agent to abandon the current goal_hypothesis and try a
-          completely different action category.
-      Make the alert SHORT (<140 chars) and SPECIFIC (name the action,
-      the wrong expectation, and what to try). Otherwise leave it "".
-
-Output STRICT JSON only -- no prose, no markdown fences:
+OUTPUT SCHEMA (no other keys, no prose, no markdown fences):
 
 {
-  "action_semantics_update": {"ACTION3": "..."},
   "goal_hypothesis_update": "..." or null,
-  "goal_confidence_update": "low" or "medium" or "high" or null,
-  "rules_append": ["..."],
-  "failed_strategies_append": ["..."],
+  "action_semantics_update": {"ACTION_X": "..."},
   "current_alert": ""
 }
 
-Concrete worked example. Suppose step 4 outcome is:
+(1) goal_hypothesis_update
+    What's the win condition? Look at active objects' configuration
+    (same-color groups -> matching or alignment; objects near an edge
+    -> targets; mover + matching static -> bring them together).
+
+    Rules:
+      - Describe the TARGET STATE in plain language, not an action.
+        Good:  "match every red dot with a red target square"
+        Bad:   "ACTION1 should move up"
+      - Do NOT re-propose a goal already in `rejected_goals` -- it has
+        been tried and disproved. The orchestrator will drop such
+        updates anyway.
+      - If you don't have a real guess, set this to null. Do NOT write
+        "unknown" / "none" / "" as a string -- only null.
+
+(2) action_semantics_update
+    When an action causes a frame_change, write a one-line description
+    naming the SUBJECT and the effect. Required subject forms:
+      - color + shape  (e.g. "the red 1x1", "the yellow square")
+      - obj_id         (e.g. "obj_002")
+      - shape only     (e.g. "the 2x2 block", "the L-shape")
+    "an active object" / "the object" / "a tracked object" are NOT
+    valid subjects -- the orchestrator drops such updates.
+
+    If you previously wrote an entry for ACTION_X and a NEW observation
+    shows a DIFFERENT effect, write a CONDITIONAL clause instead of
+    clobbering:
+      "ACTION7: reshapes the red square when adjacent to a target;
+                moves the yellow 1x1 DOWN by 3 cells otherwise"
+
+    Use {} when there's no update this step. Don't restate entries that
+    already exist in current KNOWLEDGE -- the orchestrator dedups, but
+    those tokens are wasted.
+
+(3) current_alert
+    Only fill this when matches_reasoning == "NO" (the Action Agent's
+    reasoning predicted X but the outcome was the opposite). The
+    orchestrator already handles stuck loops, no_op streaks, and state
+    revisits -- you do NOT need to alert on those.
+
+    Even for matches_reasoning == "NO", you may leave this "" -- the
+    orchestrator writes a fallback alert in that case.
+
+    Make it SHORT (<140 chars) and SPECIFIC (name the action and the
+    contradicted expectation). Use "" for "no alert".
+
+WORKED EXAMPLE. step 4 outcome:
   action=ACTION1, frame_changed=True, primary_direction=UP, distance=3,
   moved object: obj_002 (color=yellow, shape=1x1)
-Correct response (note the SUBJECT -- yellow 1x1 obj_002 -- is named):
+Correct response (subject named, only the relevant field written):
 {
-  "action_semantics_update": {"ACTION1": "moves the yellow 1x1 (obj_002) UP by 3 cells"},
   "goal_hypothesis_update": null,
-  "goal_confidence_update": null,
-  "rules_append": [],
-  "failed_strategies_append": [],
+  "action_semantics_update": {"ACTION1": "moves the yellow 1x1 (obj_002) UP by 3 cells"},
   "current_alert": ""
 }
 
-WRONG example (the orchestrator will DROP this update):
-  "action_semantics_update": {"ACTION1": "moves an active object UP by 3 cells"}
-                                          ^^^^^^^^^^^^^^^^^^^
-                                          no subject -- which object?
-
-Every field is REQUIRED. Use {} / [] / "" / null for "no update".
+WRONG: writing rules_append / failed_strategies_append / goal_confidence_update.
+Those are orchestrator-owned; including them is harmless but wastes tokens.
 """
 
 
 # ─── Action USER prompt ─────────────────────────────────────────────────────
 
 
+def _format_state_block(
+    *,
+    step: int,
+    max_steps: int,
+    level: int,
+    total_levels: int,
+    state: str,
+    legal_actions: list[str],
+    object_memory: Any,
+    object_relations: Optional[Any] = None,
+) -> str:
+    """Compact [STATE] block: status header + active object list + relations.
+
+    Replaces three v3 blocks ([STATUS], [ACTIVE], [OBJECT RELATIONS]) with
+    one to cut redundancy and prompt length. Texture is dropped entirely --
+    it was almost always "(none)" anyway, and the LLM doesn't need it.
+    """
+    def _sig(a: str) -> str:
+        return "(x, y in 0..63)" if a == "ACTION6" else ""
+    actions_annotated = ", ".join(
+        (a + " " + _sig(a)).strip() for a in legal_actions
+    )
+
+    lines: list[str] = ["[STATE]"]
+    lines.append(f"  step: {step} / {max_steps}    level: {level} / {total_levels}    game: {state}")
+    lines.append(f"  legal actions: {actions_annotated}")
+
+    active = object_memory.alive_tracked() if object_memory is not None else []
+    if not active:
+        lines.append("  active objects: (none yet -- every cell looks static)")
+    else:
+        lines.append("  active objects:")
+        for t in active:
+            if not t.history:
+                continue
+            last = t.history[-1]
+            r0, c0, r1, c1 = last.bbox
+            line = (
+                f"    {t.uid}: {last.color_name} "
+                f"size={last.size} bbox=[{r0},{c0},{r1},{c1}]"
+            )
+            if len(t.history) >= 2:
+                prev = t.history[-2]
+                dy = int(round(last.center[0] - prev.center[0]))
+                dx = int(round(last.center[1] - prev.center[1]))
+                if dy or dx:
+                    parts = []
+                    if dy < 0: parts.append("UP")
+                    elif dy > 0: parts.append("DOWN")
+                    if dx < 0: parts.append("LEFT")
+                    elif dx > 0: parts.append("RIGHT")
+                    dist = max(abs(dy), abs(dx))
+                    line += f"  (last step: moved {dist} cell(s) {'+'.join(parts)})"
+            lines.append(line)
+
+    # Object relations folded inline so we don't need another top-level block
+    if object_relations is not None:
+        try:
+            rel_text = render_relations_block(object_relations)
+            # render_relations_block returns "[OBJECT RELATIONS]\n  ..." —
+            # strip its header and indent under [STATE]
+            stripped = rel_text.split("\n", 1)[1] if "\n" in rel_text else ""
+            if stripped.strip():
+                lines.append("  relations:")
+                for ln in stripped.splitlines():
+                    # demote indentation by one level
+                    lines.append("  " + ln)
+        except Exception:
+            pass
+
+    return "\n".join(lines)
+
+
 def build_action_user_prompt(
     *,
     knowledge: Knowledge,
-    # v3 blocks — passed through to build_play_user_prompt
     step: int,
     max_steps: int,
     level: int,
@@ -188,6 +252,11 @@ def build_action_user_prompt(
     layer_by_id: dict[int, Any],
     object_memory: Any,
     outcome_log: Any,
+    # These four are kept for backward-compat with existing callers but are
+    # no longer rendered as separate blocks in v3.2 -- they're either folded
+    # into other blocks ([KNOWLEDGE].goal_hypothesis) or dropped as
+    # redundant (v3's [TEXTURE] / [HISTORY] / [CLICK CANDIDATES] / [GOAL]
+    # / [STUCK SIGNALS] / [UNTRIED] / [LOW-PRIORITY ACTIONS]).
     goal_hypothesis: str = "",
     goal_confidence: str = "low",
     diversification_hint: Optional[str] = None,
@@ -198,73 +267,62 @@ def build_action_user_prompt(
     exploration_hint: Optional[str] = None,
     click_targets: Optional[list[ClickTarget]] = None,
 ) -> str:
-    """Compose the Action Agent USER prompt.
+    """Compose the v3.2 Action Agent USER prompt in 7 blocks max.
 
-    Three new blocks above v3's:
-      - [REFLECTION ALERT]  (only if knowledge.current_alert is non-empty)
-      - [BLOCKED ACTIONS]   (R7; only if blocked_actions is non-empty)
-      - [KNOWLEDGE]
-    The v3 [ASK] block at the end is replaced with one demanding the
-    reasoning + action two-line format.
+    Order (top -> bottom):
+        [ALERT]            knowledge.current_alert when non-empty
+        [KNOWLEDGE]        cross-round persistent learning
+        [EXPLORATION HINT] untried actions + uninteracted objects + stuck
+        [CLICK TARGETS]    ACTION6 bandit (when populated and ACTION6 legal)
+        [STATE]            status + active objects + relations (merged)
+        [ACTION stats]     per-action outcome stats from OutcomeLog
+        [ASK]              two-line reasoning+action format
 
-    `blocked_actions` is the same set the orchestrator computes via
-    `action_mask.compute_action_mask`. Showing it in the prompt lets the
-    LLM avoid wasting picks on actions that will be silently replaced.
+    Dropped vs v3.2-original (information preserved elsewhere):
+        [REFLECTION ALERT] -> [ALERT]                (single alert channel)
+        [LOW-PRIORITY ACTIONS] -> folded into [EXPLORATION HINT]
+        [STATUS] / [ACTIVE] / [OBJECT RELATIONS] -> merged into [STATE]
+        [TEXTURE]    -> dropped (almost always "(none)")
+        [UNTRIED]    -> subsumed by [EXPLORATION HINT].untried
+        [HISTORY]    -> subsumed by [ACTION stats]
+        [GOAL]       -> subsumed by [KNOWLEDGE].goal_hypothesis
+        [CLICK CANDIDATES] -> superseded by [CLICK TARGETS]
+        [STUCK SIGNALS] -> subsumed by [ALERT] / [EXPLORATION HINT].STUCK
+
+    `blocked_actions`, `goal_hypothesis`, `goal_confidence`,
+    `diversification_hint`, `stuck_reason`, `click_candidates`,
+    `frame_objects`, `layer_by_id` are accepted for API stability but no
+    longer rendered as their own blocks. Their content reaches the LLM via
+    [KNOWLEDGE] / [EXPLORATION HINT] / [ALERT] / [CLICK TARGETS] instead.
     """
-    v3_body = build_play_user_prompt(
-        step=step, max_steps=max_steps,
-        level=level, total_levels=total_levels,
-        state=state, legal_actions=legal_actions,
-        frame_objects=frame_objects, layer_by_id=layer_by_id,
-        object_memory=object_memory, outcome_log=outcome_log,
-        goal_hypothesis=goal_hypothesis, goal_confidence=goal_confidence,
-        diversification_hint=diversification_hint,
-        stuck_reason=stuck_reason,
-        click_candidates=click_candidates,
-        object_relations=object_relations,
-    )
-
-    # Strip the trailing v3 [ASK] block — we'll append the v3.2 version.
-    sep = "\n\n[ASK]"
-    if sep in v3_body:
-        v3_body_no_ask = v3_body.rsplit(sep, 1)[0]
-    else:
-        v3_body_no_ask = v3_body
-
     blocks: list[str] = []
+
     if knowledge.current_alert:
-        blocks.append("[REFLECTION ALERT]\n" + knowledge.render_alert())
-    if blocked_actions:
-        # Sort for deterministic output. B (2026-05-14): we no longer
-        # silently replace these picks; they are ADVISORY. The LLM should
-        # usually avoid them, but may pick anyway if the state has clearly
-        # changed (e.g. ACTION_X failed because player was at the wall;
-        # after moving, it might work again).
-        sorted_blocked = sorted(blocked_actions)
-        blocks.append(
-            "[LOW-PRIORITY ACTIONS - recently ineffective; consider others first]\n"
-            "  " + ", ".join(sorted_blocked) + "\n"
-            "  These actions have failed N times recently OR Knowledge flags\n"
-            "  them as ineffective. They are NOT blocked -- pick one only if\n"
-            "  the game state has clearly changed (e.g. you moved off a wall)\n"
-            "  or you've exhausted higher-priority options."
-        )
+        blocks.append("[ALERT]\n" + knowledge.render_alert())
+
     blocks.append("[KNOWLEDGE - accumulated across rounds]\n" + knowledge.render())
+
     if exploration_hint:
-        # Deterministic, orchestrator-computed list of unexplored actions /
-        # uninteracted objects + optional stuck signal. Placed right after
-        # KNOWLEDGE so the LLM sees what's NOT in Knowledge before reading
-        # the v3 enriched context below.
         blocks.append(exploration_hint)
+
     if click_targets:
-        # BUG-10: per-object ACTION6 confidence map. When non-empty this
-        # supersedes v3's stateless [CLICK CANDIDATES] block -- the caller
-        # is expected to pass click_candidates=None in that case so we
-        # don't show two redundant target lists.
         ct_block = render_click_targets_block(click_targets)
         if ct_block:
             blocks.append(ct_block)
-    blocks.append(v3_body_no_ask)
+
+    blocks.append(_format_state_block(
+        step=step, max_steps=max_steps,
+        level=level, total_levels=total_levels,
+        state=state, legal_actions=legal_actions,
+        object_memory=object_memory,
+        object_relations=object_relations,
+    ))
+
+    if outcome_log is not None:
+        blocks.append(
+            "[ACTION stats]\n" + render_action_block(outcome_log, legal_actions)
+        )
+
     blocks.append(_ACTION_ASK_BLOCK)
     return "\n\n".join(blocks)
 

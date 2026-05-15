@@ -144,8 +144,8 @@ def test_current_alert_shows_at_top_of_prompt() -> None:
     agent.attach_knowledge(k)
     agent.choose(_frame(available=[1, 2, 3]), history=[])
     prompt = bb.calls[-1]["prompt"]
-    assert "[REFLECTION ALERT]" in prompt
-    assert prompt.index("[REFLECTION ALERT]") < prompt.index("[KNOWLEDGE")
+    assert "[ALERT]" in prompt
+    assert prompt.index("[ALERT]") < prompt.index("[KNOWLEDGE")
 
 
 def test_no_alert_block_when_alert_empty() -> None:
@@ -347,33 +347,40 @@ def test_R3_skipped_when_streak_below_threshold() -> None:
     assert "R3 forced_explore" not in agent._state.last_response_raw
 
 
-# ── R7: BLOCKED ACTIONS visible in prompt ────────────────────────────────
+# ── Dead-action visibility (was R7, now via [ACTION stats]) ──────────────
+#
+# v3.2 consolidation: the dedicated [LOW-PRIORITY ACTIONS] block is gone.
+# The information ("ACTION1 has been tried N times all no-op") is preserved
+# via the [ACTION stats] block which renders per-action outcome counts.
 
 
-def test_R7_lowpriority_block_appears_in_prompt_when_action_dead() -> None:
-    """When OutcomeLog shows ACTION1 with 5+ all-no-op tries, the user
-    prompt should include the [LOW-PRIORITY ACTIONS] advisory."""
+def test_dead_action_stats_appear_in_prompt() -> None:
+    """When OutcomeLog shows ACTION1 with all-no-op tries, the user prompt
+    must still surface the dead-action evidence (via [ACTION stats])."""
     same = np.zeros((8, 8), dtype=int)
     bb = _FakeBackbone(["reasoning: r\naction: ACTION1"] * 10)
     agent = ActionAgent(backbone=bb, seed=0)
-    agent.STUCK_NO_OP_THRESHOLD = 1000     # isolate from R3
+    agent.STUCK_NO_OP_THRESHOLD = 1000
     agent.STUCK_STATE_REVISIT_THRESHOLD = 1000
     agent.COLLAPSE_WINDOW = 1000
     for _ in range(7):
         agent.choose(_frame(available=[1, 2, 3], grid=same), history=[])
     prompt = bb.calls[-1]["prompt"]
-    assert "[LOW-PRIORITY ACTIONS" in prompt, "advisory block missing"
-    block = prompt.split("[LOW-PRIORITY ACTIONS")[1].split("[KNOWLEDGE")[0]
-    assert "ACTION1" in block
+    assert "[ACTION stats]" in prompt
+    stats_block = prompt.split("[ACTION stats]")[1].split("[ASK]")[0]
+    assert "ACTION1" in stats_block
+    assert "no-op" in stats_block.lower()
 
 
-def test_R7_no_lowpriority_block_when_no_action_dead() -> None:
-    """Empty OutcomeLog + Knowledge -> no mask -> no advisory block."""
+def test_action_stats_block_absent_when_no_outcomes() -> None:
+    """Even when no actions have been tried yet, [ACTION stats] renders
+    with the legal actions (each marked UNTRIED). The block itself stays."""
     bb = _FakeBackbone(["reasoning: r\naction: ACTION1"])
     agent = ActionAgent(backbone=bb)
     agent.choose(_frame(available=[1, 2, 3]), history=[])
     prompt = bb.calls[-1]["prompt"]
-    assert "[LOW-PRIORITY ACTIONS" not in prompt
+    assert "[ACTION stats]" in prompt
+    assert "UNTRIED" in prompt
 
 
 # ── max_new_tokens / temperature passthrough ──────────────────────────────

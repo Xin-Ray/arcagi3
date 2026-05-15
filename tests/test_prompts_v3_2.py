@@ -64,9 +64,10 @@ def test_action_system_mentions_failed_strategies() -> None:
 
 
 def test_action_system_warns_about_alert_priority() -> None:
-    """[REFLECTION ALERT] should be flagged as highest priority."""
+    """The alert block (now [ALERT], previously [REFLECTION ALERT]) should
+    be flagged as top priority."""
     low = ACTION_SYSTEM.lower()
-    assert "reflection alert" in low
+    assert "alert" in low
     assert "first" in low or "top" in low
 
 
@@ -81,11 +82,14 @@ def test_reflection_system_demands_strict_json() -> None:
 
 
 def test_reflection_system_lists_alert_triggers() -> None:
-    """Must list at least the explicit triggers from §4.2."""
+    """Reflection only owns the matches_reasoning trigger now.
+    no_op_streak / state_revisit are orchestrator-side (compute_orchestrator_alert).
+    """
     low = REFLECTION_SYSTEM.lower()
     assert "matches_reasoning" in low
-    assert "no_op_streak" in low
-    assert "state_revisit_count" in low
+    # Reflection should explicitly STATE that the orchestrator handles
+    # stuck/no_op/revisit so the LLM stops trying to write those alerts
+    assert "orchestrator" in low
 
 
 # ── Action USER prompt ────────────────────────────────────────────────────
@@ -108,17 +112,22 @@ def test_action_prompt_includes_alert_at_top_when_present() -> None:
     k = Knowledge.empty("ar25")
     k.current_alert = "stop spamming ACTION1; nothing moves"
     p = _build_action_prompt(knowledge=k)
-    assert "[REFLECTION ALERT]" in p
+    assert "[ALERT]" in p
     assert "stop spamming ACTION1" in p
     # Alert must appear BEFORE [KNOWLEDGE] (top priority)
-    assert p.index("[REFLECTION ALERT]") < p.index("[KNOWLEDGE")
+    assert p.index("[ALERT]") < p.index("[KNOWLEDGE")
 
 
-def test_action_prompt_preserves_v3_blocks() -> None:
+def test_action_prompt_has_required_blocks() -> None:
+    """v3.2 consolidated block list (was 17 blocks in v3, now 7)."""
     p = _build_action_prompt()
-    for marker in ("[STATUS]", "[ACTIVE]", "[TEXTURE]", "[ACTION effects",
-                   "[UNTRIED", "[HISTORY", "[GOAL", "[ASK]"):
-        assert marker in p, f"missing v3 block: {marker}"
+    for marker in ("[KNOWLEDGE", "[STATE]", "[ACTION stats", "[ASK]"):
+        assert marker in p, f"missing v3.2 block: {marker}"
+    # Dropped v3 blocks must NOT appear in the v3.2 path
+    for dropped in ("[STATUS]", "[ACTIVE]", "[TEXTURE]", "[UNTRIED",
+                    "[HISTORY", "[GOAL hyp", "[CLICK CANDIDATES",
+                    "[STUCK SIGNALS]", "[LOW-PRIORITY ACTIONS"):
+        assert dropped not in p, f"v3 block {dropped} should be dropped from v3.2"
 
 
 def test_action_prompt_ask_demands_two_lines() -> None:
@@ -136,69 +145,36 @@ def test_action_prompt_does_not_have_duplicate_ask() -> None:
     assert p.count("[ASK]") == 1
 
 
-# ── R7: [BLOCKED ACTIONS] block ─────────────────────────────────────────
+# ── Object relations folded into [STATE] ────────────────────────────────
 
 
-def test_action_prompt_includes_lowpriority_block_when_passed() -> None:
-    p = _build_action_prompt(blocked_actions={"ACTION6"})
-    assert "[LOW-PRIORITY ACTIONS" in p
-    assert "ACTION6" in p
-    # Wording shifted from REPLACE -> NOT blocked / consider others
-    assert "NOT blocked" in p or "not blocked" in p
-    assert "REPLACE" not in p.upper().replace("PRIORITY", "")  # no replacement language
-
-
-def test_action_prompt_no_lowpriority_block_when_set_empty() -> None:
-    p = _build_action_prompt(blocked_actions=set())
-    assert "[LOW-PRIORITY ACTIONS" not in p
-
-
-def test_action_prompt_no_lowpriority_block_when_none() -> None:
-    p = _build_action_prompt(blocked_actions=None)
-    assert "[LOW-PRIORITY ACTIONS" not in p
-
-
-def test_action_prompt_lowpriority_above_v3_blocks() -> None:
-    p = _build_action_prompt(blocked_actions={"ACTION6", "ACTION7"})
-    # Block should appear before [STATUS] (which is from v3 layer)
-    assert p.index("[LOW-PRIORITY ACTIONS") < p.index("[STATUS]")
-
-
-def test_action_prompt_includes_object_relations_block() -> None:
-    """When ObjectRelations is passed, the prompt should include the
-    [OBJECT RELATIONS] block between [ACTIVE] and [TEXTURE]."""
+def test_action_prompt_state_block_includes_relations_when_passed() -> None:
+    """v3.2 folds [OBJECT RELATIONS] inline under [STATE]. The relations
+    content (e.g. same-color group color names) must still reach the
+    prompt -- the contract is the FACTS, not the block name."""
     from arc_agent.object_relations import ObjectRelations
     relations = ObjectRelations(
         same_color_groups={"red": [0, 1, 2]},
         closest_pairs=[(0, 1, 3.2)],
     )
     p = _build_action_prompt(object_relations=relations)
-    assert "[OBJECT RELATIONS]" in p
+    assert "[STATE]" in p
     assert "red" in p
-    # Should sit between [ACTIVE] and [TEXTURE]
-    assert p.index("[ACTIVE]") < p.index("[OBJECT RELATIONS]")
-    assert p.index("[OBJECT RELATIONS]") < p.index("[TEXTURE]")
 
 
-def test_action_prompt_no_relations_block_when_none() -> None:
+def test_action_prompt_no_relations_text_when_none() -> None:
     p = _build_action_prompt(object_relations=None)
+    # No top-level OBJECT RELATIONS block and no inline relations sub-section
     assert "[OBJECT RELATIONS]" not in p
+    assert "\n  relations:" not in p
 
 
-def test_action_prompt_lowpriority_sorted_for_determinism() -> None:
-    """Sorted output -> same prompt every step given same mask -> Qwen
-    cache hits + reproducible tests."""
-    p = _build_action_prompt(blocked_actions={"ACTION7", "ACTION6", "ACTION1"})
-    block = p.split("[LOW-PRIORITY ACTIONS")[1].split("[KNOWLEDGE")[0]
-    assert block.index("ACTION1") < block.index("ACTION6")
-    assert block.index("ACTION6") < block.index("ACTION7")
-
-
-def test_action_prompt_knowledge_appears_above_v3_blocks() -> None:
+def test_action_prompt_knowledge_appears_above_state() -> None:
+    """Order: ALERT -> KNOWLEDGE -> EXPLORATION HINT -> CLICK TARGETS -> STATE."""
     k = Knowledge.empty("ar25")
-    k.action_semantics = {"ACTION1": "up"}
+    k.action_semantics = {"ACTION1": "moves the red 1x1 up"}
     p = _build_action_prompt(knowledge=k)
-    assert p.index("[KNOWLEDGE") < p.index("[STATUS]")
+    assert p.index("[KNOWLEDGE") < p.index("[STATE]")
 
 
 # ── Reflection USER prompt ────────────────────────────────────────────────
@@ -367,13 +343,13 @@ def test_action_prompt_no_exploration_block_when_none() -> None:
     assert "[EXPLORATION HINT]" not in p
 
 
-def test_action_prompt_exploration_hint_below_knowledge_above_v3() -> None:
-    """Order: KNOWLEDGE -> EXPLORATION HINT -> v3 blocks."""
+def test_action_prompt_exploration_hint_below_knowledge_above_state() -> None:
+    """Order: KNOWLEDGE -> EXPLORATION HINT -> [STATE]."""
     p = _build_action_prompt(
         exploration_hint="[EXPLORATION HINT]\n  Actions you have NOT tried: ACTION5"
     )
     assert p.index("[KNOWLEDGE") < p.index("[EXPLORATION HINT]")
-    assert p.index("[EXPLORATION HINT]") < p.index("[STATUS]")
+    assert p.index("[EXPLORATION HINT]") < p.index("[STATE]")
 
 
 def test_reflection_prompt_includes_exploration_hint_when_passed() -> None:
@@ -448,7 +424,199 @@ def test_action_prompt_click_targets_ordered_by_priority() -> None:
     assert p.index("obj_fresh") < p.index("obj_decayed")
 
 
-def test_action_prompt_click_targets_above_v3_blocks() -> None:
-    """[CLICK TARGETS] should appear before [STATUS] so it's not buried."""
+def test_action_prompt_click_targets_above_state() -> None:
+    """[CLICK TARGETS] should appear before [STATE] so it's not buried."""
     p = _build_action_prompt(click_targets=[_make_click_target()])
-    assert p.index("[CLICK TARGETS") < p.index("[STATUS]")
+    assert p.index("[CLICK TARGETS") < p.index("[STATE]")
+
+
+# ── Core-info-preservation contract (must survive any refactor) ──────────
+#
+# These tests pin down what facts MUST be visible to the Action Agent
+# regardless of which blocks we add / remove / merge. The block names can
+# change; the *facts* cannot. If a refactor accidentally drops one of these,
+# the test fails and we know we have an information leak.
+
+
+class _RichFixture:
+    """Builds an action prompt with a fully-populated state so every
+    contract-required fact has a non-default value to look for."""
+
+    def __init__(self) -> None:
+        from arc_agent.click_targets import ClickTarget
+        self.knowledge = Knowledge.empty("ar25")
+        self.knowledge.action_semantics = {
+            "ACTION1": "moves the maroon 1x1 UP by 3 cells",
+            "ACTION7": "rotates the cyan square",
+        }
+        self.knowledge.goal_hypothesis = "match every red dot with a red target"
+        self.knowledge.goal_confidence = "medium"
+        self.knowledge.rules = ["ACTION6 effective only near object centers"]
+        self.knowledge.failed_strategies = ["clicking near (32,32) never advances"]
+        self.knowledge.rejected_goals = ["push the player to the top-left"]
+        self.knowledge.rounds_played = 2
+        self.knowledge.current_alert = (
+            "matches_reasoning=NO: you expected UP but obj moved DOWN"
+        )
+        self.click_targets = [
+            ClickTarget(obj_id="obj_007", signature="cyan_1x1",
+                        coords=(12, 30), color_name="cyan",
+                        bbox=(12, 30, 12, 30),
+                        confidence=1.0, tries=0, successes=0),
+            ClickTarget(obj_id="obj_009", signature="yellow_1x1",
+                        coords=(5, 60), color_name="yellow",
+                        bbox=(5, 60, 5, 60),
+                        confidence=0.05, tries=10, successes=0),
+        ]
+        self.exploration_hint = (
+            "[EXPLORATION HINT]\n"
+            "  STUCK: same state seen 4x in last 8 steps\n"
+            "  Actions you have NOT tried this round: ACTION3, ACTION5"
+        )
+
+    def build(self, **overrides):
+        kwargs = dict(
+            knowledge=self.knowledge,
+            click_targets=self.click_targets,
+            exploration_hint=self.exploration_hint,
+        )
+        kwargs.update(overrides)
+        return _build_action_prompt(**kwargs)
+
+
+def test_contract_goal_hypothesis_visible() -> None:
+    """The current goal MUST reach the prompt (used to live in [GOAL]
+    block, now lives in [KNOWLEDGE]; this test stays true either way)."""
+    p = _RichFixture().build()
+    assert "match every red dot with a red target" in p
+
+
+def test_contract_goal_confidence_visible() -> None:
+    p = _RichFixture().build()
+    assert "medium" in p   # confidence label
+
+
+def test_contract_rejected_goals_visible() -> None:
+    """BUG-8 negative memory must reach the prompt."""
+    p = _RichFixture().build()
+    assert "push the player to the top-left" in p
+
+
+def test_contract_action_semantics_visible() -> None:
+    """Both keys' subject-having descriptions must reach the prompt."""
+    p = _RichFixture().build()
+    assert "moves the maroon 1x1 UP by 3 cells" in p
+    assert "rotates the cyan square" in p
+
+
+def test_contract_rules_visible() -> None:
+    p = _RichFixture().build()
+    assert "ACTION6 effective only near object centers" in p
+
+
+def test_contract_failed_strategies_visible() -> None:
+    p = _RichFixture().build()
+    assert "clicking near (32,32) never advances" in p
+
+
+def test_contract_current_alert_visible_and_prominent() -> None:
+    """Alert must appear AND must be near the top so the LLM sees it."""
+    p = _RichFixture().build()
+    alert_text = "matches_reasoning=NO"
+    assert alert_text in p
+    # Must appear in the first third of the prompt for visibility
+    assert p.index(alert_text) < len(p) // 3
+
+
+def test_contract_legal_actions_visible() -> None:
+    """The list of currently legal actions must reach the prompt — the LLM
+    can't pick from an option it doesn't know exists."""
+    p = _RichFixture().build()
+    # _build_action_prompt defaults to ACTION1, ACTION2, ACTION6
+    for a in ("ACTION1", "ACTION2", "ACTION6"):
+        assert a in p
+
+
+def test_contract_click_targets_visible_with_obj_id_and_coords() -> None:
+    """obj_id + coords MUST both reach the prompt so the LLM has a concrete
+    target to address."""
+    p = _RichFixture().build()
+    assert "obj_007" in p
+    assert "(12,30)" in p
+
+
+def test_contract_click_targets_confidence_visible() -> None:
+    """Decayed target's low confidence must show so the LLM knows to skip."""
+    p = _RichFixture().build()
+    # obj_009 has confidence 0.05 -> should be flagged WRITTEN OFF or similar
+    assert "obj_009" in p
+    assert "0.05" in p or "WRITTEN OFF" in p
+
+
+def test_contract_exploration_hint_text_visible() -> None:
+    """Untried actions + stuck signal must reach the prompt."""
+    p = _RichFixture().build()
+    # untried actions
+    assert "ACTION3" in p and "ACTION5" in p
+    # stuck signal
+    assert "STUCK" in p
+
+
+def test_contract_active_objects_with_bbox_visible() -> None:
+    """[ACTIVE] objects with their bbox/center must reach the prompt so the
+    LLM can target them with ACTION6."""
+    # Build with non-empty object_memory
+    from arc_agent.object_extractor import extract_objects
+    from arc_agent.object_tracker import ObjectMemory
+    from arc_agent.temporal_classifier import Layer
+
+    g = np.zeros((10, 10), dtype=int)
+    g[5, 5] = 3
+    objs = extract_objects(g)
+    layer = {o.id: Layer.CANDIDATE for o in objs}
+    # Simulate ObjectMemory containing a tracked object
+    mem = ObjectMemory()
+    from arc_agent.object_tracker import ObjectSnapshot, TrackedObject
+    t = TrackedObject(uid="obj_005", color=3, last_step=0, alive=True,
+                      history=[ObjectSnapshot(step=0, scipy_id=0, color=3,
+                                              color_name="green",
+                                              bbox=(5, 5, 5, 5),
+                                              center=(5.0, 5.0), size=1)])
+    mem._tracked["obj_005"] = t
+
+    p = _build_action_prompt(
+        frame_objects=objs, layer_by_id=layer, object_memory=mem,
+    )
+    # Either explicit bbox numbers OR obj_005 anchor must reach the prompt
+    assert "obj_005" in p or "[5,5,5,5]" in p
+
+
+def test_contract_step_and_level_visible() -> None:
+    """[STATUS] facts (step, level) must reach the prompt."""
+    p = _build_action_prompt(step=42, level=3, total_levels=8)
+    # step / max_steps appears as "42 / 80" etc.
+    assert "42" in p
+    # level appears as "3 / 8"
+    assert "3 / 8" in p or "level: 3" in p
+
+
+def test_contract_ask_format_visible() -> None:
+    """The output format directive must reach the prompt EVERY step."""
+    p = _RichFixture().build()
+    assert "[ASK]" in p
+    ask = p.split("[ASK]")[-1].lower()
+    assert "reasoning:" in ask
+    assert "action:" in ask
+
+
+def test_contract_no_information_lost_when_alerts_empty() -> None:
+    """Even when most optional blocks are empty, baseline facts (goal,
+    semantics, legal actions, ASK) must still reach the prompt."""
+    f = _RichFixture()
+    f.knowledge.current_alert = ""
+    p = f.build(exploration_hint=None)   # no alert, no exploration hint
+    # Baseline facts still present
+    assert "match every red dot with a red target" in p
+    assert "moves the maroon 1x1 UP by 3 cells" in p
+    assert "ACTION1" in p
+    assert "[ASK]" in p

@@ -117,12 +117,86 @@ def detect_repeat_stuck(
     return False, "", count
 
 
+# Default thresholds for the orchestrator-side stuck alert.
+DEFAULT_NO_OP_STREAK_THRESHOLD = 5
+DEFAULT_STATE_REVISIT_THRESHOLD = 5
+
+
+def compute_orchestrator_alert(
+    *,
+    matches_reasoning: Optional[str] = None,
+    masked_stuck_reason: Optional[str] = None,
+    no_op_streak: int = 0,
+    state_revisit: int = 0,
+    last_picks: Optional[list[str]] = None,
+    no_op_streak_threshold: int = DEFAULT_NO_OP_STREAK_THRESHOLD,
+    state_revisit_threshold: int = DEFAULT_STATE_REVISIT_THRESHOLD,
+) -> str:
+    """Single alert channel: returns ONE alert string for the next-step
+    Action prompt, chosen by priority. Empty string when nothing fires.
+
+    Priority (highest -> lowest):
+      1. matches_reasoning == "NO"         (Action Agent's mental model was wrong)
+      2. masked-hash repeat                (deterministic loop with counter-aware hash)
+      3. no_op_streak >= threshold         (game ignoring the agent)
+      4. state_revisit >= threshold        (raw-hash loop, fallback)
+
+    This deliberately replaces the ad-hoc `_build_stuck_alert` in
+    run_v3_multi_round + Reflection's current_alert field. Reflection can
+    still propose an alert via delta, but the orchestrator overwrites
+    when ANY of the above fires, so the agent always gets the strongest
+    deterministic signal.
+    """
+    last_picks = last_picks or []
+
+    # P1: reasoning mismatch
+    if matches_reasoning == "NO":
+        culprit = last_picks[-1] if last_picks else "the last action"
+        return (
+            f"Your reasoning predicted an effect but the outcome contradicted "
+            f"it ({culprit}). Revise your model of what this action does -- "
+            f"do NOT repeat the same prediction next step."
+        )
+
+    # P2: masked-hash loop -- strongest deterministic loop signal
+    if masked_stuck_reason:
+        return (
+            f"{masked_stuck_reason} "
+            "Abandon the current goal_hypothesis -- it isn't working. "
+            "Try a different action category OR a different obj_id."
+        )
+
+    # P3: raw-signal stuck (no_op_streak / state_revisit)
+    if (no_op_streak >= no_op_streak_threshold
+            or state_revisit >= state_revisit_threshold):
+        if last_picks:
+            from collections import Counter
+            counts = Counter(last_picks)
+            culprit, n = counts.most_common(1)[0]
+            others = ", ".join(sorted(set(f"ACTION{i}" for i in range(1, 8))
+                                      - {culprit}))
+            return (
+                f"Stuck for {max(no_op_streak, state_revisit)} steps; "
+                f"last picks were mostly {culprit} ({n} times). "
+                f"Pick a non-{culprit} action like one of: {others}."
+            )
+        return (
+            f"Stuck: state_revisit={state_revisit} no_op_streak={no_op_streak}. "
+            "Try a different action category."
+        )
+
+    return ""
+
+
 __all__ = [
-    "MIN_FRAMES_FOR_MASK",
     "DEFAULT_MIN_UNIQUE_THRESHOLD",
-    "DEFAULT_STUCK_WINDOW",
+    "DEFAULT_NO_OP_STREAK_THRESHOLD",
+    "DEFAULT_STATE_REVISIT_THRESHOLD",
     "DEFAULT_STUCK_MIN_REPEATS",
+    "DEFAULT_STUCK_WINDOW",
+    "MIN_FRAMES_FOR_MASK",
     "compute_noise_mask",
-    "masked_grid_hash",
+    "compute_orchestrator_alert",
     "detect_repeat_stuck",
+    "masked_grid_hash",
 ]

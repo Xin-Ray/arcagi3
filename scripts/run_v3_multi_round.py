@@ -52,6 +52,12 @@ from arc_agent.agents.action_agent import ActionAgent  # noqa: E402
 from arc_agent.agents.reflection_agent import ReflectionAgent  # noqa: E402
 from arc_agent.click_targets import update_click_targets  # noqa: E402
 from arc_agent.knowledge import Knowledge  # noqa: E402
+from arc_agent.orchestrator_rules import (  # noqa: E402
+    auto_failed_strategies_from_outcome_log,
+    auto_rules_from_outcome_log,
+    infer_goal_confidence_from_log,
+)
+from arc_agent.stuck_detector import compute_orchestrator_alert  # noqa: E402
 from arc_agent.object_aligner import align_objects  # noqa: E402
 from arc_agent.object_extractor import extract_objects  # noqa: E402
 from arc_agent.object_relations import compute_relations  # noqa: E402
@@ -543,22 +549,49 @@ def run_one_game(
 
             knowledge = knowledge.merged_with_delta(delta)
 
-            # C: orchestrator-level deterministic stuck alert. Overwrites
-            # current_alert when the agent is clearly looping (state revisit
-            # or no_op_streak threshold). Bypasses Reflection LLM for this
-            # specific signal so Action Agent always gets actionable info.
+            # P2: orchestrator owns deterministic rules / failed_strategies
+            # / confidence. Reflection no longer writes these (its schema
+            # was simplified). Apply auto-rules via merged_with_delta so the
+            # existing R4 contradiction filter still runs.
+            legal_for_rules = available_action_names(latest)
+            auto_rules = auto_rules_from_outcome_log(
+                refl_outcome_log, legal_for_rules,
+            )
+            auto_failed = auto_failed_strategies_from_outcome_log(
+                refl_outcome_log, legal_for_rules,
+            )
+            auto_conf = infer_goal_confidence_from_log(
+                refl_outcome_log,
+                win_seen=(latest.state == GameState.WIN),
+            )
+            if auto_rules or auto_failed or auto_conf is not None:
+                knowledge = knowledge.merged_with_delta({
+                    "rules_append": auto_rules,
+                    "failed_strategies_append": auto_failed,
+                    "goal_confidence_update": auto_conf,
+                })
+
+            # Single alert channel (replaces the old C `_build_stuck_alert`
+            # + Reflection's current_alert in tandem). Priority order:
+            #   matches_reasoning=NO > masked-hash loop > no_op_streak
+            #   > state_revisit. Whatever wins overwrites whatever Reflection
+            #   wrote, because deterministic signals beat LLM speculation.
             last_picks = [a for (a, _changed, _dir)
                           in action_agent.recent_step_records(n=5)] \
                 if hasattr(action_agent, "recent_step_records") else []
-            stuck_alert = _build_stuck_alert(
+            masked_stuck_reason = getattr(
+                getattr(action_agent, "_state", None),
+                "last_masked_stuck_reason", "",
+            )
+            unified_alert = compute_orchestrator_alert(
+                matches_reasoning=matches_reasoning,
+                masked_stuck_reason=masked_stuck_reason,
                 no_op_streak=no_op_streak,
                 state_revisit=state_revisit,
                 last_picks=last_picks,
             )
-            if stuck_alert:
-                # Overwrite (we have higher priority than Reflection's alert
-                # for this concrete signal)
-                knowledge.current_alert = stuck_alert
+            if unified_alert:
+                knowledge.current_alert = unified_alert
 
             # 5) viz
             if save_images and grid_after is not None:

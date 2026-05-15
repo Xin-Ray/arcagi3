@@ -122,6 +122,11 @@ class _ActionAgentState:
     # and forwards it to the Reflection Agent so both see the same set.
     last_exploration_hint: str = ""
 
+    # Last masked-hash repeat-stuck reason (empty when not stuck). The
+    # orchestrator reads this each step to feed `compute_orchestrator_alert`
+    # so the single-alert channel includes counter-aware loop detection.
+    last_masked_stuck_reason: str = ""
+
 
 class ActionAgent:
     """v3.2 Action Agent. Same perception + memory as v3, plus Knowledge."""
@@ -215,6 +220,9 @@ class ActionAgent:
         self._state.masked_frame_hashes.append(masked_h)
         repeat_stuck, repeat_stuck_reason, _ = detect_repeat_stuck(
             self._state.masked_frame_hashes,
+        )
+        self._state.last_masked_stuck_reason = (
+            repeat_stuck_reason if repeat_stuck else ""
         )
 
         # 3c) build the exploration hint that goes into BOTH prompts. The
