@@ -68,19 +68,28 @@ def _known_good_actions(
     return out
 
 
-def _best_click_target(knowledge: Knowledge) -> Optional[dict]:
+def _ct_get(target, attr, default=None):
+    """Read attribute from a click_target — dataclass or dict (compat)."""
+    if hasattr(target, attr):
+        return getattr(target, attr)
+    if isinstance(target, dict):
+        return target.get(attr, default)
+    return default
+
+
+def _best_click_target(knowledge: Knowledge):
     """Pick highest-confidence alive click_target with low tries.
 
     Priority: untried (tries=0) high-conf first, else high-conf.
     """
     if not getattr(knowledge, "click_targets", None):
         return None
-    alive = [t for t in knowledge.click_targets if t.get("alive", True)]
+    alive = [t for t in knowledge.click_targets if _ct_get(t, "alive", True)]
     if not alive:
         return None
-    untried = [t for t in alive if t.get("tries", 0) == 0]
+    untried = [t for t in alive if _ct_get(t, "tries", 0) == 0]
     pool = untried if untried else alive
-    return max(pool, key=lambda t: t.get("confidence", 0.0))
+    return max(pool, key=lambda t: _ct_get(t, "confidence", 0.0))
 
 
 def propose(
@@ -121,8 +130,8 @@ def propose(
         if a == "ACTION6":
             ct = _best_click_target(knowledge)
             if ct is not None:
-                coords = tuple(ct["coords"])
-                reason = f"untried this round; click target {ct.get('signature','obj')}"
+                coords = tuple(_ct_get(ct, "coords"))
+                reason = f"untried this round; click target {_ct_get(ct, 'signature', 'obj')}"
             else:
                 coords = (rng.randint(0, 63), rng.randint(0, 63))
                 reason = f"untried this round (random click coords)"
@@ -140,7 +149,7 @@ def propose(
         coords = None
         if a == "ACTION6":
             ct = _best_click_target(knowledge)
-            coords = tuple(ct["coords"]) if ct else (rng.randint(0, 63), rng.randint(0, 63))
+            coords = tuple(_ct_get(ct, "coords")) if ct else (rng.randint(0, 63), rng.randint(0, 63))
         candidates.append((a, coords, f"known-good: {short_sem}"))
         break
 
@@ -151,8 +160,8 @@ def propose(
         ct = _best_click_target(knowledge)
         if ct is not None:
             candidates.append((
-                "ACTION6", tuple(ct["coords"]),
-                f"click target {ct.get('signature','obj')} (conf={ct.get('confidence',0):.2f})",
+                "ACTION6", tuple(_ct_get(ct, "coords")),
+                f"click target {_ct_get(ct, 'signature', 'obj')} (conf={_ct_get(ct, 'confidence', 0.0):.2f})",
             ))
 
     # Then more untried (prefer)
