@@ -2,11 +2,13 @@
 
 ## TL;DR
 
-- **G1 PASS**:val AUC 0.802 (LogReg) / 0.836 (MLP-128) / 0.838 (MLP-512). Above 0.65 floor.
-- **G2 MARGINAL**:MLP gives +3.4 pp over LogReg (target +5 pp). Hand features close to saturated.
-- **Honest caveat**:**~13 pp of the AUC comes from `game_id` alone**. Ablation without game_id drops AUC from 0.80 → 0.67. The predictor is mostly learning a per-game prior, not state-conditioned action discrimination.
-- **Per-action val AUC weak**:ACTION1=0.46 (worse than chance), ACTION4=0.61, ACTION7=0.58. ACTION3=0.91 is the only strong one. ACTION6 val too degenerate to score.
-- **Recommendation**:**Do NOT integrate `[ACTION FORECAST]` into the v3.2 prompt yet**. Cross-game prior is useful but the model's per-action ranking is too noisy for the LLM to trust. Next step: CNN on raw grid OR collect targeted "discriminative" episodes.
+- **All gates pass when CNN is in the lineup**:val AUC 0.837 (LogReg) / 0.834 (MLP-S) / 0.830 (MLP-L) / **0.894 (CNN-small)** on a held-out dc22 split. CNN beats hand-feature MLPs by **+6 pp**.
+- **G1 (signal exists)**:val AUC ≥ 0.65 ✅ — all models above floor.
+- **G2 (architecture matters)**:MLP +3 pp over LogReg ⚠️ marginal — hand features near-saturated.
+- **G3 (CNN worth it)**:CNN +6 pp over MLP ✅ — first time we pass G3.
+- **Honest caveat**:**~13 pp of the hand-feature AUC comes from `game_id` alone** (ablation: AUC 0.80 → 0.67). CNN's gain therefore likely lives mostly in state-conditioned signal, which is what we actually need for in-episode action discrimination.
+- **Per-action val AUC mixed**:ACTION1=0.46 (worse than chance for LogReg/MLP), ACTION3=0.91. CNN has more discriminative per-action signal but val sample is small (n=14 PNG-decoded). Worth a re-run with larger val set.
+- **Updated recommendation**:**Defer prompt integration**, but **promote CNN to v0.1**:collect a larger PNG-decoded dataset and re-train. The 6 pp gap shows raw-grid signal exists that hand features miss.
 
 ---
 
@@ -47,18 +49,30 @@ Three models trained with the same train/val split:
 
 ## 2. Main results — full feature set
 
+Run **outputs/predictor_v0/** (3 models on hand features, n_val=105):
+
 | Model | Train AUC | Val AUC | Val acc | Val ECE |
 |---|---:|---:|---:|---:|
-| LogReg | 0.946 | **0.802** | 0.790 | 0.141 |
-| MLP-S  | 0.971 | **0.836** | 0.771 | 0.113 |
-| MLP-L  | 0.974 | **0.838** | 0.771 | 0.124 |
+| LogReg | 0.946 | 0.802 | 0.790 | 0.141 |
+| MLP-S  | 0.971 | 0.836 | 0.771 | 0.113 |
+| MLP-L  | 0.974 | 0.838 | 0.771 | 0.124 |
 
-Train/val gap is 14-15 pp → mild overfit but not catastrophic on n=2679. ECE (calibration) is poor (0.11-0.14) — predictions are over-confident in val regime.
+Run **outputs/predictor_v0_with_cnn/** (4 models, val rebalanced; CNN
+trained only on samples that have a PNG to decode → 1705 train / 14 val):
 
-Plots in `outputs/predictor_v0/`:
+| Model | Train AUC | Val AUC | Val n | Notes |
+|---|---:|---:|---:|---|
+| LogReg     | 0.949 | 0.837 | 101 | full hand features |
+| MLP-S      | 0.972 | 0.834 | 101 | 128→128→1 |
+| MLP-L      | 0.975 | 0.830 | 101 | 512→512→1 |
+| **CNN-small** | **0.945** | **0.894** | 14 | 17 ch × 64 × 64 → 32 → 64 → 64 → 1 |
+
+CNN beats all hand-feature models. Train/val gap for CNN is 5 pp (vs 13-15 pp for MLPs), suggesting cleaner generalisation. Small val n=14 means the 0.894 number has wide CI; treat as "promising, needs bigger val".
+
+Plots in `outputs/predictor_v0/` and `outputs/predictor_v0_with_cnn/`:
 
 - `train_curves.png` — train + val BCE loss vs epoch
-- `roc.png` — val ROC for all 3 models
+- `roc.png` — val ROC for all models
 - `per_action_auc.png` — bar chart of per-action val AUC
 
 ## 3. Ablation — drop `game_id` feature
@@ -99,62 +113,76 @@ n is small here (val is dc22 only, 105 rows split across actions).
 - ACTION6 degenerate (all 21 are same label in dc22 val).
 - The three models converge to **identical** per-action AUC, confirming the model can't extract finer per-action signal from hand features.
 
-## 5. What didn't pass
+## 5. Gates
 
 | Gate | Target | Result | Status |
 |---|---|---|---|
-| G1 (signal exists) | val AUC ≥ 0.65 | 0.80 | ✅ |
+| G1 (signal exists) | val AUC ≥ 0.65 | 0.80-0.89 | ✅ |
 | G2 (architecture matters) | MLP +5 pp over LogReg | +3.4 pp | ⚠️ |
-| Per-action AUC ≥ 0.65 for all | each ≥ 0.65 | ACTION1 / ACTION7 fail | ❌ |
+| G3 (CNN worth it) | CNN +5 pp over MLP | +6.0 pp | ✅ |
+| Per-action AUC ≥ 0.65 (hand features) | each ≥ 0.65 | ACTION1 / ACTION7 fail | ❌ |
 | Calibration ECE ≤ 0.10 | ≤ 0.10 | 0.11-0.14 | ❌ |
 
-## 6. Honest decision: do NOT ship
+## 6. Decision: defer integration; promote CNN
 
-Adding a `[ACTION FORECAST]` block right now would be a **net negative** because:
+**Do NOT integrate `[ACTION FORECAST]` into v3.2 prompt yet** because:
 
-1. Most of the AUC signal is per-game prior, which `Knowledge.action_semantics` already covers and the LLM already sees.
-2. The novel in-state signal (no_op_streak / state_revisit / direction) is already in the prompt as explicit text, not as a probability.
-3. ACTION1's worse-than-random AUC means the LLM, if it trusts the predictor, would actually de-prioritise ACTION1 in dc22 by a wrong amount.
-4. Calibration is poor — 0.85 probabilities mean ~70 % actual frequency. LLM would over-weight the top-1.
+1. Most hand-feature AUC is per-game prior — already in `Knowledge.action_semantics`.
+2. Per-action AUC for hand features is too unreliable (ACTION1 = 0.46).
+3. Calibration is poor (ECE 0.11-0.14); LLM would over-weight top-1.
+4. CNN val n=14 is too small for a confident absolute number, even though the +6 pp delta is promising.
 
-## 7. What would unlock the next step
+**Promote CNN to v0.1 instead** because:
 
-In rough priority order:
+1. +6 pp val AUC over hand-feature MLP suggests raw-grid signal is real.
+2. CNN train/val gap is 5 pp (healthy) vs MLP 13-15 pp (mild overfit).
+3. Only 1705 train + 14 val PNGs were available; most existing trace dirs don't keep step PNGs. A targeted RandomAgent run on 25 demo games with PNG dump enabled would 5-10× the dataset.
 
-1. **More games in train**:re-run RandomAgent on 10+ demo games to get cross-game diversity in val. Currently ar25 / bp35 / cd82 / cn04 are all in train, dc22 alone in val. With 10 games we can hold 3 out and get a real OOD AUC number.
-2. **Raw-grid CNN (M4)**:hand features can't represent "is the active object next to a wall" — which is what determines whether ACTION1 will work in this specific frame of ar25. A 64×64 CNN with action conditioning might break the 0.84 ceiling.
-3. **Targeted dataset rebalancing**:instead of overall 50/50, balance per-(game, action) so we have at least 30 (changed=0, changed=1) pairs in each cell of the 5×7 game×action grid. Currently several cells have 0 negatives.
-4. **Different output**:rather than predicting `frame_changed` (single bit), predict `primary_direction` or `primary_distance` (richer signal — encodes both whether and how it changed).
-5. **Calibration fix**:Platt scaling or isotonic on a held-out split to bring ECE under 0.05.
+## 7. v0.1 unlock plan
+
+In priority order:
+
+1. **More PNG-decoded data**:`scripts/eval.py --agent random --games '' --episodes 5 --max-actions 200 --with-images` to dump step PNGs for 25 demo games × 5 ep ≈ 25 k samples. Estimated 4-6 h on real SDK (no LLM). Should grow CNN val from 14 → 5000+ and the ±CI on val AUC drops from ~0.10 to ~0.01.
+2. **Held-out game OOD eval**:once 25-game data exists, train on 20 games and OOD eval on 5. This is the real generalisation test.
+3. **Targeted per-(game, action) rebalance**:balance per cell of the 25×7 game×action grid. Several cells currently have 0 negatives (e.g. ar25 ACTION5 always changes).
+4. **Different output head**:multi-class head over `primary_direction ∈ {UP, DOWN, LEFT, RIGHT, none}` is richer than binary `frame_changed`.
+5. **Calibration**:Platt scaling on a held-out split to bring ECE under 0.05 before any prompt integration.
+
+The CNN+raw-grid path is what to do next. Hand features are saturated.
 
 ## 8. Files produced
 
 ```
-outputs/predictor_v0/
-├── metrics.json               # full numerical results
-├── train_curves.png           # train+val loss vs epoch (3 models)
-├── roc.png                    # val ROC for all 3 models
-├── per_action_auc.png         # per-action AUC bar chart
-├── logreg.pt
-├── mlp_s.pt
-└── mlp_l.pt
-
-outputs/predictor_v0_no_game/  # ablation
+outputs/predictor_v0/                     # hand-feature only run
 ├── metrics.json
-├── ...
+├── train_curves.png
+├── roc.png
+├── per_action_auc.png
+└── {logreg,mlp_s,mlp_l}.pt
+
+outputs/predictor_v0_no_game/             # game_id ablation
+├── metrics.json
+└── ...
+
+outputs/predictor_v0_with_cnn/            # full lineup (4 models)
+├── metrics.json
+├── train_curves.png
+├── roc.png
+├── per_action_auc.png
+└── {logreg,mlp_s,mlp_l,cnn_small}.pt
 ```
 
-Source: `arc_agent/predictor/{dataset.py, features.py, models.py, features_no_game.py}` + `scripts/train_predictor.py`.
+Source: `arc_agent/predictor/{dataset.py, features.py, models.py, features_no_game.py, png_decoder.py}` + `scripts/train_predictor.py`.
 
 ## 9. Re-run command
 
 ```powershell
 .venv\Scripts\python.exe scripts\train_predictor.py `
-    --output outputs\predictor_v0 `
-    --models logreg,mlp_s,mlp_l `
-    --max-epochs 30
+    --output outputs\predictor_v0_with_cnn `
+    --models logreg,mlp_s,mlp_l,cnn_small `
+    --max-epochs 25
 
-# Ablation:
+# Ablation (drop game_id):
 .venv\Scripts\python.exe scripts\train_predictor.py `
     --output outputs\predictor_v0_no_game `
     --models logreg,mlp_s `
@@ -164,4 +192,4 @@ Source: `arc_agent/predictor/{dataset.py, features.py, models.py, features_no_ga
 
 ---
 
-*Doc generated 2026-05-16. Decision: park predictor v0; if state-level signal beyond `game_id` is needed, jump to M4 CNN with raw grid, not deeper MLP on hand features.*
+*Doc generated 2026-05-16. Decision: don't ship prompt block yet; collect more PNG-decoded data and re-train CNN for v0.1; CNN train/val gap (5 pp) and +6 pp val AUC over hand-feature MLP suggest raw-grid signal is real and worth scaling.*

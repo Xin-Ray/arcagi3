@@ -30,8 +30,11 @@ from arc_agent.predictor.features import (
     FEATURE_DIM, encode_batch, labels_array,
 )
 from arc_agent.predictor.models import (
-    LogRegPredictor, MLP_S, MLP_L,
+    LogRegPredictor, MLP_S, MLP_L, CNN_small,
 )
+from arc_agent.predictor.png_decoder import decode_grid, encode_for_cnn
+
+_ACTION_TO_IDX = {f"ACTION{i}": i for i in range(1, 8)}
 
 
 def _split_by_game(
@@ -194,6 +197,36 @@ def main() -> None:
     else:
         X_train = encode_batch(train); y_train = labels_array(train)
         X_val = encode_batch(val);     y_val = labels_array(val)
+
+    # CNN needs raw grids from PNG decode. We do this lazily only if any
+    # CNN model is requested, and only for samples whose step_image_path
+    # exists.
+    need_cnn = "cnn_small" in args.models.split(",")
+    X_train_cnn = X_val_cnn = None
+    cnn_train_subset = cnn_val_subset = None
+    if need_cnn:
+        print("[cnn] decoding PNGs ...", file=sys.stderr)
+        def _decode_set(subset: list[Sample]) -> tuple[np.ndarray, np.ndarray, list[Sample]]:
+            arrs, labs, kept = [], [], []
+            for s in subset:
+                if s.step_image_path is None:
+                    continue
+                grid = decode_grid(s.step_image_path)
+                if grid is None:
+                    continue
+                aidx = _ACTION_TO_IDX.get(s.action, 0)
+                arrs.append(encode_for_cnn(grid, aidx))
+                labs.append(s.label)
+                kept.append(s)
+            if not arrs:
+                return (np.zeros((0, 17, 64, 64), dtype=np.float32),
+                        np.zeros(0, dtype=np.float32), [])
+            return np.stack(arrs), np.array(labs, dtype=np.float32), kept
+        X_train_cnn, y_train_cnn, cnn_train_subset = _decode_set(train)
+        X_val_cnn, y_val_cnn, cnn_val_subset = _decode_set(val)
+        print(f"[cnn] decoded train={len(cnn_train_subset)} "
+              f"val={len(cnn_val_subset)} (samples with valid PNG)",
+              file=sys.stderr)
     print(f"[feat] X_train={X_train.shape} y mean={y_train.mean():.3f}",
           file=sys.stderr)
     print(f"[feat] X_val  ={X_val.shape}   y mean={y_val.mean():.3f}",
@@ -208,6 +241,8 @@ def main() -> None:
             model_specs.append((n, MLP_S(in_dim=FEATURE_DIM)))
         elif n == "mlp_l":
             model_specs.append((n, MLP_L(in_dim=FEATURE_DIM)))
+        elif n == "cnn_small":
+            model_specs.append((n, CNN_small()))
         else:
             print(f"[warn] unknown model: {n}", file=sys.stderr)
 
@@ -221,19 +256,32 @@ def main() -> None:
 
     for name, model in model_specs:
         print(f"[fit] {name} ...", file=sys.stderr)
-        hist = model.fit(X_train, y_train, X_val, y_val,
-                         max_epochs=args.max_epochs, seed=args.seed)
+        if name == "cnn_small":
+            if X_train_cnn is None or X_train_cnn.shape[0] == 0:
+                print(f"[fit] {name} skipped (no decoded PNGs)", file=sys.stderr)
+                continue
+            hist = model.fit(X_train_cnn, y_train_cnn, X_val_cnn, y_val_cnn,
+                             max_epochs=args.max_epochs, seed=args.seed)
+            val_p = model.predict_proba(X_val_cnn)
+            train_p = model.predict_proba(X_train_cnn)
+            val_metrics_all[name] = _metrics(val_p, y_val_cnn)
+            train_metrics_all[name] = _metrics(train_p, y_train_cnn)
+            per_action[name] = _per_action_auc(val_p, y_val_cnn, cnn_val_subset)
+        else:
+            hist = model.fit(X_train, y_train, X_val, y_val,
+                             max_epochs=args.max_epochs, seed=args.seed)
+            val_p = model.predict_proba(X_val)
+            train_p = model.predict_proba(X_train)
+            val_metrics_all[name] = _metrics(val_p, y_val)
+            train_metrics_all[name] = _metrics(train_p, y_train)
+            per_action[name] = _per_action_auc(val_p, y_val, val)
         histories[name] = hist
-        val_p = model.predict_proba(X_val)
-        train_p = model.predict_proba(X_train)
         val_probs[name] = val_p
-        val_metrics_all[name] = _metrics(val_p, y_val)
-        train_metrics_all[name] = _metrics(train_p, y_train)
-        per_action[name] = _per_action_auc(val_p, y_val, val)
         # ROC
         try:
             from sklearn.metrics import roc_curve
-            fpr, tpr, _ = roc_curve(y_val, val_p)
+            y_for_roc = y_val_cnn if name == "cnn_small" else y_val
+            fpr, tpr, _ = roc_curve(y_for_roc, val_p)
             rocs[name] = (fpr, tpr)
             aucs[name] = val_metrics_all[name]["auc"]
         except (ImportError, ValueError):
