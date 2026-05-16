@@ -223,6 +223,31 @@ def test_C_build_stuck_alert_fires_on_state_revisit_alone() -> None:
     assert "ACTION6" in out
 
 
+# ── R2 mask attribution-bug regression (2026-05-16) ──────────────────────
+
+
+def test_R2_mask_substitution_updates_prev_action_name() -> None:
+    """When the orchestrator's R2 substitutes ACTION6 -> ACTION_X, the
+    next step's outcome must be credited to ACTION_X, not ACTION6.
+
+    This was the bug discovered in mask_revive_3x200 round_02: the
+    OutcomeLog was crediting frame changes to the masked action because
+    action_agent._state.prev_action_name still held the LLM's pre-mask
+    pick. After the first successful substitution the mask saw
+    n_changed(ACTION6) > 0 and stopped firing. We assert here that the
+    fix (overwriting prev_action_name to the substituted name) is in
+    place.
+    """
+    import inspect
+    src = inspect.getsource(run_module.run_one_game)
+    # The fix writes `action_agent._state.prev_action_name = new_name`
+    # inside the mask branch. If this line disappears, the bug is back.
+    assert "prev_action_name = new_name" in src, (
+        "R2 substitution must overwrite action_agent._state.prev_action_name "
+        "or the OutcomeLog will attribute frame changes to the masked action."
+    )
+
+
 # ── D: natural termination on WIN/GAME_OVER ────────────────────────────
 
 

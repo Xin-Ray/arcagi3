@@ -519,6 +519,15 @@ def run_one_game(
                                     })
                                 orch_override_reason = reason
                                 action.reasoning = f"R2_mask: {reason}"
+                                # Attribution fix (2026-05-16, mask_revive_3x200
+                                # round_02 evidence). action_agent.choose set
+                                # prev_action_name to the LLM's pre-mask pick.
+                                # If we don't overwrite, the NEXT _record_outcome
+                                # call credits this env step's frame_changed to
+                                # the masked action, poisoning OutcomeLog and
+                                # making the mask stop firing on that action.
+                                if hasattr(action_agent, "_state"):
+                                    action_agent._state.prev_action_name = new_name
                                 print(
                                     f"[round {r} step {step}] R2_mask: {reason}",
                                     file=sys.stderr,
