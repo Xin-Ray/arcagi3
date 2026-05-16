@@ -91,21 +91,55 @@ def _load_g_base(override: str) -> list[str]:
     return json.loads(SPLIT_PATH.read_text(encoding="utf-8"))["g_base"]
 
 
-def _make_agent(dry_run: bool, seed: int, max_new_tokens: int, temperature: float):
-    """Choose the agent. --dry-run swaps in RandomAgent so we don't load Qwen."""
+def _make_agent(
+    dry_run: bool,
+    seed: int,
+    max_new_tokens: int,
+    temperature: float,
+    mode: str = "full",
+    history: int = 0,
+):
+    """Build the requested agent. `--dry-run` always wins (no Qwen load).
+
+    `mode` selects the architecture for the GPU path (per `docs/ARCHITECTURE_AGENTS.md` §1):
+        full             → VLMAgent (A2 — entities + predicted_diff + chosen_action)
+        lite             → VLMAgentLite (A1 — image to action only)
+        reflect          → PlayReflectAgent (A3 — Play + Reflect every K steps)
+        reflect_mistakes → PlayReflectMistakesAgent (A4 — A3 + auto-detected mistakes)
+    """
     if dry_run:
         from arc_agent.agents.random import RandomAgent
         return RandomAgent(seed=seed)
 
-    from arc_agent.agents.vlm import VLMAgent
     from arc_agent.vlm_backbone import HFBackbone
-
     backbone = HFBackbone.load()  # Qwen2.5-VL-3B-Instruct, 4-bit
-    return VLMAgent(
-        backbone=backbone,
-        seed=seed,
-        max_new_tokens=max_new_tokens,
-        temperature=temperature,
+
+    mode = mode.lower()
+    if mode == "full":
+        from arc_agent.agents.vlm import VLMAgent
+        return VLMAgent(
+            backbone=backbone,
+            seed=seed,
+            max_new_tokens=max_new_tokens,
+            temperature=temperature,
+        )
+    if mode == "lite":
+        from arc_agent.agents.vlm_lite import VLMAgentLite
+        return VLMAgentLite(
+            backbone=backbone,
+            seed=seed,
+            max_new_tokens=8,
+            history=history,
+        )
+    if mode == "reflect":
+        from arc_agent.agents.reflect import PlayReflectAgent
+        return PlayReflectAgent(backbone=backbone, seed=seed)
+    if mode == "reflect_mistakes":
+        from arc_agent.agents.reflect import PlayReflectMistakesAgent
+        return PlayReflectMistakesAgent(backbone=backbone, seed=seed)
+    raise ValueError(
+        f"unknown --mode {mode!r}; choose one of "
+        "lite | full | reflect | reflect_mistakes"
     )
 
 
@@ -170,6 +204,18 @@ def main() -> None:
         "--temperature", type=float, default=0.0,
         help="VLM sampling temperature. 0.0 = greedy (faster, deterministic).",
     )
+    parser.add_argument(
+        "--mode",
+        default="full",
+        choices=["lite", "full", "reflect", "reflect_mistakes"],
+        help="Agent architecture (ARCHITECTURE_AGENTS.md §1): "
+             "lite=A1 image->action, full=A2 baseline, reflect=A3, "
+             "reflect_mistakes=A4. Ignored under --dry-run.",
+    )
+    parser.add_argument(
+        "--history", type=int, default=0,
+        help="A1+h variant: only used when --mode lite. N=last-N actions in prompt.",
+    )
     args = parser.parse_args()
 
     _check_key()
@@ -186,6 +232,7 @@ def main() -> None:
 
     agent = _make_agent(
         args.dry_run, args.seed, args.max_new_tokens, args.temperature,
+        mode=args.mode, history=args.history,
     )
 
     card_id = arc.open_scorecard(tags=[args.tag, "g_base"])
@@ -271,7 +318,14 @@ def main() -> None:
         hypothesis=HYPOTHESIS,
         branch_decision=branch,
         scorecard_id=card_id,
-        agent="random" if args.dry_run else "vlm_qwen25vl3b",
+        agent=(
+            "random" if args.dry_run
+            else (
+                f"vlm_qwen25vl3b:lite_h{args.history}"
+                if args.mode == "lite"
+                else f"vlm_qwen25vl3b:{args.mode}"
+            )
+        ),
         max_actions=args.max_actions,
         notes="zero-shot baseline; LoRA untrained" if not args.dry_run else "dry-run plumbing test",
     )

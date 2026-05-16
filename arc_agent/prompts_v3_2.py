@@ -34,6 +34,22 @@ from arc_agent.step_summary import StepSummary
 
 ACTION_SYSTEM = """You are the Action Agent for a turn-based 64x64 grid game.
 
+GAME ECONOMICS -- READ THIS FIRST:
+  Every action that changes the frame (frame_changed=True) DEPLETES a
+  hidden PROGRESS BUDGET. If the budget runs out before you complete
+  the level, the level FAILS. Your score is `min(1, h/a)^2` where h
+  is the human action count and a is YOUR action count -- being 2x
+  slower than a human yields 0.25, not 0.5.
+  Implications:
+    - Do NOT spam an action just because it works. Each spam costs budget.
+    - Do NOT use UNDO (ACTION7 in many games) unless you genuinely need
+      to retract a mistake -- it costs budget AND reverses progress.
+    - Do NOT pick ACTION6 in games where KNOWLEDGE says it's inert --
+      it still costs budget when it has effect, and yields nothing
+      when it doesn't.
+    - PLAN the shortest action sequence to the win condition. Speed
+      beats certainty when you have a working theory.
+
 Each step you receive accumulated KNOWLEDGE (action_semantics,
 goal_hypothesis, rejected_goals, rules, failed_strategies) plus
 per-step perception. Trust the KNOWLEDGE block. Do NOT re-explore

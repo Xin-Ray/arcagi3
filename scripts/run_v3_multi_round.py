@@ -325,6 +325,60 @@ def _perceive_for_reflection(grid: Optional[np.ndarray]):
         return None, None
 
 
+# Preload action maps for diagnostic experiments. When --preload-action-map
+# names a key here, Knowledge.action_semantics is pre-populated at round-0
+# start so the agent doesn't have to discover what each action does. This
+# isolates two failure modes:
+#   (a) the discovery loop is broken (Reflection won't write semantics)
+#   (b) the agent can't reason well even WITH the full map
+# If the agent still spams ACTION1 with the map preloaded, (b) is the
+# bottleneck and we need orchestrator rescue. Otherwise (a) is the gap.
+# Entries are written DIRECTLY to knowledge.action_semantics so the BUG-9
+# subject filter doesn't reject the generic "moving 1x1" subject.
+PRELOAD_ACTION_MAPS: dict[str, dict[str, str]] = {
+    # ar25-specific action map. Sources: 2026-05-15 user clarification +
+    # empirical traces from outputs/bug11_12_13_smoke + outputs/all_fixes_smoke.
+    # Official template names from vendor/ARC-AGI-3-Agents/agents/templates/
+    # multimodal.py: ACTION5="Perform Action" (spacebar-style), ACTION6=
+    # "Click object on screen", ACTION7="Undo". ar25 specifics below.
+    #
+    # Critical mechanic (also surfaced in ACTION_SYSTEM): every action with
+    # frame_changed=True depletes a hidden PROGRESS BUDGET. If the budget
+    # runs out before the win condition, the level FAILS. Score formula
+    # rewards fewer actions: S = min(1, h/a)^2.
+    "ar25": {
+        "ACTION1": "move the active object UP by 3 cells (no-op when blocked at top). Costs 1 progress when it changes a frame.",
+        "ACTION2": "move the active object DOWN by 3 cells (no-op when blocked at bottom). Costs 1 progress when it changes a frame.",
+        "ACTION3": "move the active object RIGHT by 3 cells (no-op when blocked at right). Costs 1 progress when it changes a frame.",
+        "ACTION4": "move the active object LEFT by 3 cells (no-op when blocked at left). Costs 1 progress when it changes a frame.",
+        "ACTION5": (
+            "SPACEBAR / Perform Action -- the ONLY way to advance the game's "
+            "internal phase counter. Does NOT translate or visually change "
+            "any tracked object; frame_changed=True with primary_direction=null. "
+            "REQUIRED at some point to complete a level. COSTS PROGRESS BUDGET "
+            "like any other action, so do not press it repeatedly without "
+            "reason. Use when you believe the current object configuration "
+            "is correct and you need to commit / advance phase."
+        ),
+        "ACTION6": (
+            "AVOID -- 'click object at (x, y)' in the official template, but "
+            "in ar25 ACTION6 is INERT in every level. 200+ historical tries "
+            "yielded 0 frame_changes across smoke runs. Picking ACTION6 here "
+            "is pure budget waste."
+        ),
+        "ACTION7": (
+            "UNDO -- reverses the previous step's effect. Direction observed "
+            "is the OPPOSITE of the previous action (previous ACTION1/UP -> "
+            "ACTION7 looks like DOWN, etc.). DOUBLY EXPENSIVE -- it costs a "
+            "progress unit AND erases the gain from the prior action. AVOID "
+            "during forward play. Only use to retract a genuine mistake when "
+            "the recovery cost (1 + redo) is less than continuing from the "
+            "wrong state."
+        ),
+    },
+}
+
+
 # C: orchestrator-level stuck alert generator. Deterministic (no LLM),
 # fires when state_revisit_count or no_op_streak crosses threshold.
 STUCK_ALERT_THRESHOLD = 5
@@ -367,6 +421,7 @@ def run_one_game(
     fps: int = 2,
     save_images: bool = True,
     seed: int = 42,
+    preload_action_map: Optional[str] = None,
 ) -> dict[str, Any]:
     """Run N rounds of one game.
 
@@ -381,6 +436,13 @@ def run_one_game(
     knowledge_history_path = out_dir / "knowledge_history.jsonl"
 
     knowledge = Knowledge.empty(game_id=game_id_full)
+
+    # Diagnostic preload: bypass discovery for the action map.
+    if preload_action_map and preload_action_map in PRELOAD_ACTION_MAPS:
+        knowledge.action_semantics = dict(PRELOAD_ACTION_MAPS[preload_action_map])
+        print(f"[preload] action_semantics preloaded from "
+              f"PRELOAD_ACTION_MAPS[{preload_action_map!r}] "
+              f"({len(knowledge.action_semantics)} entries)")
 
     per_round_metrics: list[dict[str, Any]] = []
 
@@ -752,6 +814,15 @@ def main() -> None:
                         help="Skip PNG + GIF (trace.jsonl still written).")
     parser.add_argument("--max-new-tokens-action", type=int, default=96)
     parser.add_argument("--max-new-tokens-reflection", type=int, default=250)
+    parser.add_argument(
+        "--preload-action-map",
+        choices=sorted(PRELOAD_ACTION_MAPS.keys()) + ["none"],
+        default="none",
+        help="Diagnostic: pre-populate Knowledge.action_semantics with a "
+             "game-specific hardcoded map (e.g. 'ar25') so the agent skips "
+             "discovery. Use to isolate whether Reflection's failure to "
+             "write semantics is the bottleneck.",
+    )
     args = parser.parse_args()
 
     ts = time.strftime("%Y%m%d-%H%M%S")
@@ -808,6 +879,10 @@ def main() -> None:
                 reflection_agent=reflection_agent, fps=args.fps,
                 save_images=not args.no_images,
                 seed=args.seed,
+                preload_action_map=(
+                    None if args.preload_action_map == "none"
+                    else args.preload_action_map
+                ),
             )
         finally:
             try:

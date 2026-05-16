@@ -5,6 +5,8 @@
 
 > **本文与 `ARCHITECTURE.md` 的分工**:`ARCHITECTURE.md` 写"模块职责"(稳定不变);本文写"训练 + 推理的具体步骤"(可演进)。本文是 RL 路线的**核心实现文档**,后续代码以此为蓝本。
 
+> <span style="color:red">🔴 **[RED INK · 2026-05-12 实战批注]** — 本文写于 2026-05-11 设计阶段。Baseline 在 2026-05-11/05-12 共跑了 3 次,**均未产出 `summary.json`**(SSH 断 + JSON 解析失败)。文中以 <span style="color:red">🔴 红色批注</span> 标出**与实测不符之处**和**新技术建议**。**原文一字未删,仅追加**。</span>
+
 ---
 
 ## 战略决策(2026-05-11)
@@ -124,6 +126,12 @@ F1 = 0.0   (预测完全错,P 没动)
 }
 ```
 
+> <span style="color:red">🔴 **[RED INK · 2026-05-12]** — §1 Prompt 实测问题(`baseline_20260512_110415.err` 76+ 条 unparseable):
+> - **缺少 entity 数量上限**:`bp35` 上模型输出 70+ 实体把 768 token 全用完,JSON 被截断 → 段 4 必须加 `请最多输出 8 个 entities, 优先选最重要的`。
+> - **`shape` 字段未约束**:模型把 `shape` 写成 `"1,1,1,1,1,1,..."`(76 字符长逗号串),立刻吃光预算。建议改成 `shape: "rectangle" | "L" | "T" | "blob" | "single"` 枚举,或干脆删掉。
+> - **`coords` 每步都被填**:段 5 写 "only for ACTION6" 但模型每步都吐 `coords`(它在 schema 里)。要么删,要么改成 `"coords": null | {x: int, y: int}`。
+> - **中英混杂**:`function` 反复出现 "墙壁/障碍物/T 字" 等中文。verifier 不受影响但日志难读;可加约束 `JSON key 全英文, value 可中文`。</span>
+
 ### 1.1 新增 3 段的作用
 
 | 段 | 作用 | 是否影响 reward |
@@ -131,6 +139,8 @@ F1 = 0.0   (预测完全错,P 没动)
 | 反思(段 3) | 让 Qwen 显式利用上轮 F1 信号,避免重复犯错 | 间接(它会让下一步 F1 更高) |
 | 实体识别(段 4) | 把"看图" 拆成结构化感知,比 free-form 描述可控 | 可选辅助:entity 自洽度 +0.05 |
 | 输出格式(段 5) | 强制结构化,verifier 才能 parse | **JSON parse 失败 = -0.5 reward**(见 §3) |
+
+> <span style="color:red">🔴 **[RED INK · 2026-05-12]** — §1.1 表里漏写了最常见的失败模式:**token 截断**。Reward 公式只能罚"输出 JSON 不合法",**不能修复"输到一半被切断"**。修法是 `max_new_tokens ≥ 1024` + entity 数量上限,或直接走 §1.3 红字的 constrained decoding。the f1 score is also a problem, if f1 score is 1, exactly the same, but frame is not moving, this reward will let the agetn to stuck, and also the f1 will not encourage the agent to explore the world, which is queit important for such a no target game</span>
 
 ### 1.2 一次输出多个动作?
 
@@ -151,6 +161,21 @@ Qwen2.5-VL 支持 interleaved 多图。每张 512×512 ≈ 334 visual tokens,32K
 | 多图 | 当前帧 + 多种假想后帧 | 内部 lookahead(可选未来) |
 
 ---
+
+> <span style="color:red">🔴 **[RED INK · 2026-05-12]** — 新技术建议:**Constrained / Structured Decoding**(把 JSON 合法性变成"硬保证"而非"罚分博弈"):
+>
+> | 库 | 特点 | 集成 |
+> |---|---|---|
+> | [`outlines`](https://github.com/dottxt-ai/outlines) | 用 Pydantic schema 强制解码,JSON 一定合法 | 直接配 transformers |
+> | [`lm-format-enforcer`](https://github.com/noamgat/lm-format-enforcer) | `logits_processor` 形态,1 行接入 | transformers / vLLM / TGI |
+> | [`xgrammar`](https://github.com/mlc-ai/xgrammar) | C++ 后端,延迟近 0 开销 | MLC / vLLM |
+>
+> 选其一可:
+> - 直接消灭 §3 的 `parse_fail -0.5` 罚分(parse_rate → 1.0 by construction)
+> - 让 §10.2 的 `max_new_tokens=256` 重新可行(无 markdown fence / 解释文字消耗预算)
+> - 省掉段 5 "请只输出 JSON 不要前后缀" 这种**靠模型自觉**的指令
+>
+> 落地步骤:① 把段 5 的 schema 写成 Pydantic `BaseModel`;② 在 `arc_agent/vlm_backbone.py::generate()` 加 `logits_processor=...`;③ Reward 公式删掉 parse-fail 项,把那 -0.5 的预算挪到其他奖励项。</span>
 
 ## 第 2 节:训练流程(RL only)
 
@@ -222,6 +247,8 @@ def compute_reward(step) -> float:
 - 训练初期 Qwen 会乱输出,若只 fallback 到随机不罚,**它永远学不会输 JSON**
 - 给 −0.5 罚分后,几轮内模型稳定输出合法 JSON
 - 推理阶段仍保留 fallback(rollout 不能崩),**仅训练时罚**
+
+> <span style="color:red">🔴 **[RED INK · 2026-05-12]** — §3.1 / Q6 都断言 "Instruct-tuned Qwen 初始 parse ≥ 0.7"。**实测打脸**:`ar25` 1.000,但 `bp35` 76+ 条 unparseable(`outputs/baseline_20260512_110415.err`)。**真因不是模型不肯输 JSON**,而是 token 预算被实体列表撑爆 + `shape` 字段被写成长逗号串。罚 -0.5 不能修复"被截断";修法依次:① max_new_tokens 768→1024;② 段 4 加 entity 上限 8;③ 仍不稳 → constrained decoding(§1.3 红字)。</span>
 
 ### 3.2 推理时 F1 干什么
 
@@ -334,6 +361,8 @@ scripts/run_baseline.py
       * runs/baseline_<ts>/summary.json             各游戏 mean F1/RHAE
 ```
 
+> <span style="color:red">🔴 **[RED INK · 2026-05-12]** — Baseline **必须走 `scheduler-run`**:Windows + OpenSSH 下 `Start-Process -WindowStyle Hidden` 会被 SSH session 的 job object 在断开时连带杀掉(`baseline_20260512_110415` 死在 game 2/5,`.err` 无 traceback)。改走 `.\scripts\run_scheduled.ps1 baseline scripts\run_baseline.py ...`(首次需 elevated PowerShell;见 `.claude/skills/scheduler-run/SKILL.md` 与 CLAUDE.md "Commands" 节)。</span>
+
 **合成图布局**(每步一张 PNG):
 ```
 ┌──────────────────────────────────────────────────┐
@@ -352,6 +381,8 @@ scripts/run_baseline.py
 | Mean F1 在 G_base | **≥ 0.30** | Qwen zero-shot 有视觉理解 |
 | Mean RHAE 在 G_base | **≤ 0.05** | zero-shot 不大可能通关 |
 | JSON parse 成功率 | **≥ 0.70** | Instruct-tuned Qwen 指令遵循能力 |
+
+> <span style="color:red">🔴 **[RED INK · 2026-05-12]** — Hypothesis 应加入**单游戏最小指标**:`parse ≥ 0.70` 写成全局均值时,`ar25` 1.000 + `bp35` 0.20 + 三游戏 0.50 可以混到 0.54 看起来"中间态",其实是单游戏崩坏。建议新增 `min_parse_per_game ≥ 0.50`,同样给 F1 加 `min_f1_per_game ≥ 0.10`(防止一个高 F1 把均值拉过门槛而掩盖其他游戏全错)。</span>
 
 #### Iteration trigger
 
@@ -526,6 +557,20 @@ CLAUDE.md 的"库优先"规则仍然强制:任何会被复用的函数必须进 
   - 0.1 ≤ F1 < 0.3 → 消融实验(单图 vs 双图;有 entity 段 vs 无)
 - **Acceptance**:summary.json + 触发的分支结论写在本文件 §9 末尾的"Run Log"小节(append-only)
 
+> <span style="color:red">🔴 **[RED INK · 2026-05-12]** — Step 6 当前状态:**3 次尝试均未产出 `summary.json`**。
+> - `baseline_20260511_200835` + 2 次 resume — 模型加载完即被 SSH 断
+> - `baseline_20260512_110415` — `ar25` 完成(F1=0.475, parse=1.000, **levels=0/8**),`bp35` 中 SSH 断;76+ 条 parse 失败已在 `.err`
+>
+> **下次跑前必做(顺序)**:
+> 1. **`scripts/run_scheduled.ps1`** — 不走则继续被 SSH 杀(infra,见 §5.2 红字)
+> 2. **`--max-new-tokens 1024`** — 768 在 `bp35` 上已截断(§1 红字)
+> 3. **段 4 加 entity 上限**:`请最多输出 8 个 entities, 优先选最重要的`(§1 红字)
+> 4. **修 `arc_agent/vlm_backbone.py::generate` 的 sampling 路径** — `temperature=0.0` 被 transformers 静默忽略(`.err` 第 4 行 warning),应改为 `do_sample=False`(greedy)而不是传 `temperature` kwarg
+>
+> **可选升级**(若 1-4 后仍 `parse < 0.7`):接 `outlines` / `lm-format-enforcer`,见 §1.3 红字。
+>
+> **额外观察 — F1 高 ≠ 会通关**:`ar25` F1=0.475 已过 §5.2 F1 ≥ 0.30 门槛,但 `levels=0/8`,RHAE 仍为 0。这意味着进入 Step 7 GRPO 后,**reward 公式可能需要把 `通关 +1.0` 权重再上调**,或加入"接近目标"的中间奖励(如某关键 cell 颜色趋近目标),否则梯度被密集 F1 项主导而走偏(StochasticGoose 失败模式的近亲)。</span>
+
 ### Step 7 — `scripts/run_grpo.py`  🟡(2026-05-11:reward_fn + build_trainer + --dry-run 骨架就位;rollout adapter 待 Step 6 通过后接入)
 
 - **文件**:`scripts/run_grpo.py`(脚本)+ `arc_agent/train_grpo.py`(库,封装 trl.GRPOTrainer 的 setup)
@@ -578,6 +623,10 @@ CLAUDE.md 的"库优先"规则仍然强制:任何会被复用的函数必须进 
 
 预计组合后:~80 步 × 5–6 秒 = 7–8 分钟/局 × 110 = **~14 小时**。仍超,需要继续找。
 
+> <span style="color:red">🔴 **[RED INK · 2026-05-12]** — §10.2 时延优化优先级 #2 写 "降到 `max_new_tokens=256`"。**实测 768 都不够**(`bp35` 上 JSON 截断),256 在当前 prompt 下几乎必崩。**先决条件**是:① constrained decoding 把输出收紧成纯 JSON 无废字(§1.3 红字);② entity 上限 8 个;③ 把段 4 的 shape 说明压成单行枚举。三者不到位,256 不要碰,先稳在 1024。
+>
+> **另:VRAM 表(§10.1)未含每步图像 I/O 和 PIL 内存**。`--no-images` 是优先级 #1 但当前 baseline 跑出来才 1 game,VRAM 实测尚不可信。下次跑加 `nvidia-smi --loop=10 > vram.log` 旁路记录,真实数据补回表格。</span>
+
 ### 10.3 离线打包清单(待 Step 6 通过后再打包)
 
 - [ ] Qwen2.5-VL-3B 权重(本地路径 / Kaggle Dataset)
@@ -594,3 +643,6 @@ CLAUDE.md 的"库优先"规则仍然强制:任何会被复用的函数必须进 
 | 日期 | Step | 关键数字 | 触发分支 | 下一步 |
 |---|---|---|---|---|
 | _(待填)_ | | | | |
+| <span style="color:red">2026-05-11 20:08</span> | <span style="color:red">6</span> | <span style="color:red">F1 N/A — SSH 断,模型加载完即死 (× 2 resume)</span> | <span style="color:red">未完成</span> | <span style="color:red">resume → 仍失败</span> |
+| <span style="color:red">2026-05-12 00:08</span> | <span style="color:red">6</span> | <span style="color:red">`dc22` parse 全失败(76+ 条),无完整一局</span> | <span style="color:red">未完成</span> | <span style="color:red">改用 scheduler-run + 调 prompt</span> |
+| <span style="color:red">2026-05-12 11:04</span> | <span style="color:red">6</span> | <span style="color:red">`ar25` F1=0.475 parse=1.000 levels=0/8;`bp35` 中 SSH 断</span> | <span style="color:red">未完成 — 3/5 未跑</span> | <span style="color:red">见 §9 Step 6 红字四项必做</span> |

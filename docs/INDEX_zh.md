@@ -1,6 +1,6 @@
 # 文档索引
 
-最近更新: 2026-05-14
+最近更新: 2026-05-15
 
 新接手代码 / 不知道从哪看起 → **按下面顺序读前 3 篇就够**。
 
@@ -55,6 +55,10 @@ status:  不进文件名 — 状态在本 INDEX 写(状态会变,文件名稳定
 ### 6. [ref_object_pipeline_zh.md](./ref_object_pipeline_zh.md)
 
 > 视觉感知层的设计 + 评测。**结论**:Qwen-VL 对单帧 / 对齐都不可靠,改用 `scipy.ndimage.label` + Hungarian。包含 ar25 上 scipy 100% vs Qwen 0% 的实测对比。
+
+### 7. [arch_sft_tier1_zh.md](./arch_sft_tier1_zh.md) ⭐ **Tier 1 SFT 设计 + 第一轮实测复盘**(2026-05-15)
+
+> 5 次裸模型 planning probe 全部失败(y 反向、整数除法不会、组合不会),Tier 1 用**合成数据 + LoRA SFT** 修 LLM 的单步基础能力(T1 方向/T2 算术/T3 相对位置/T4 格式/T8 一致性)。包含:动机数据、合成 schema、训练配置、baseline-first eval 协议、决策门、跟 v3.2 集成方式、规则合规分析。**§12 加入第一轮实测复盘**(2026-05-15):holdout 全 100% 但 planning probe 完全没修 + gsm8k 退化 14.7pp,决策门 FAIL,根因 T4 模板锁死了 planning 格式解空间;下一轮走 F3(加 planning-format 合成样本 + T4 target 随机化)。**改 Qwen 权重前必读;接 Tier 1 LoRA 前先看 §12.4 / §12.5**。
 
 ---
 
@@ -145,14 +149,17 @@ status:  不进文件名 — 状态在本 INDEX 写(状态会变,文件名稳定
 
 3 份旧 agent 设计文档移到 `archive/docs_2026-05-14/`。完整列表在上面 ⚫ 区块。
 
-### 当前 docs/ 文件清单(6 个)
+### 当前 docs/ 文件清单(7 个)
 
 ```
 docs/
 ├── INDEX_zh.md                 ← 本文件
 ├── arch_v3_2_zh.md            ← 🟢 v3.2 双 agent 最新设计
 ├── arch_v3_zh.md              ← 🟢 v3 单 agent 基线
+├── arch_sft_tier1_zh.md       ← 🟢 Tier 1 SFT 设计(2026-05-15)
 ├── ref_v3_prompt_zh.md        ← 🟢 prompt 实战参考
+├── ref_v3_2_dataflow_zh.md    ← 🟢 v3.2 三板块 I/O 走查
+├── ref_v3_2_hardrules_results_zh.md ← 🟢 R1/R2/R3 实测对比
 ├── ref_object_pipeline_zh.md  ← 🟢 视觉感知层评测
 └── arch_rl_v0_zh.md           ← 🟡 RL 老设计(留作 CLAUDE.md 引用)
 ```

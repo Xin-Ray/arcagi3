@@ -110,11 +110,19 @@ def generate(
     system: str = "",
     max_new_tokens: int = 512,
     temperature: float = 0.0,
+    constrained_schema: Optional[dict] = None,
 ) -> str:
     """Run one Qwen2.5-VL generation and return decoded text.
 
     Builds the chat-template messages (system + user-with-image), tokenizes,
     runs `model.generate`, and decodes only the newly generated tokens.
+
+    If `constrained_schema` is given AND `lm-format-enforcer` is installed,
+    decoding is restricted to outputs that parse against the JSON Schema. If
+    the library is missing, falls back to free-form generation with a logged
+    warning (so unit tests on machines without the dep still pass). Per
+    `docs/ARCHITECTURE_AGENTS.md` §1 A2: this is the path that kills the
+    bp35-style 76-row parse blowup.
     """
     try:
         import torch
@@ -128,36 +136,94 @@ def generate(
     messages: list[dict] = []
     if system:
         messages.append({"role": "system", "content": system})
-    messages.append({
-        "role": "user",
-        "content": [
+
+    if image is None:
+        # Text-only mode: skip the image content block entirely.
+        user_content = [{"type": "text", "text": prompt}]
+    else:
+        user_content = [
             {"type": "image", "image": image},
             {"type": "text", "text": prompt},
-        ],
-    })
+        ]
+    messages.append({"role": "user", "content": user_content})
 
     text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
     image_inputs, video_inputs = process_vision_info(messages)
-    inputs = processor(
-        text=[text],
-        images=image_inputs,
-        videos=video_inputs,
-        padding=True,
-        return_tensors="pt",
-    ).to(model.device)
+    proc_kwargs: dict[str, Any] = {
+        "text": [text],
+        "padding": True,
+        "return_tensors": "pt",
+    }
+    if image_inputs:
+        proc_kwargs["images"] = image_inputs
+    if video_inputs:
+        proc_kwargs["videos"] = video_inputs
+    inputs = processor(**proc_kwargs).to(model.device)
+
+    gen_kwargs: dict[str, Any] = {
+        "max_new_tokens": max_new_tokens,
+        "do_sample": temperature > 0.0,
+        "temperature": temperature,
+    }
+
+    logits_processor = _build_schema_logits_processor(constrained_schema, processor)
+    if logits_processor is not None:
+        gen_kwargs["logits_processor"] = logits_processor
 
     with torch.no_grad():
-        out = model.generate(
-            **inputs,
-            max_new_tokens=max_new_tokens,
-            do_sample=temperature > 0.0,
-            temperature=temperature,
-        )
+        out = model.generate(**inputs, **gen_kwargs)
     trimmed = [o[len(i):] for i, o in zip(inputs.input_ids, out)]
     decoded = processor.batch_decode(
         trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
     )
     return decoded[0]
+
+
+def _build_schema_logits_processor(
+    schema: Optional[dict], processor: Any
+) -> Any:
+    """Return a HF LogitsProcessorList constrained to `schema`, or None.
+
+    Tries lm-format-enforcer first; absence is non-fatal (returns None and
+    logs once). Kept as a helper so unit tests can monkeypatch it.
+    """
+    if schema is None:
+        return None
+    # Compat shim: newer transformers moved PreTrainedTokenizerBase to
+    # transformers.tokenization_utils_base, but lm-format-enforcer 0.x still
+    # imports it from transformers.tokenization_utils. Without this, the
+    # integration's ImportError handler swallows the real error and the
+    # fall-back path silently picks free-form decoding.
+    try:
+        import transformers.tokenization_utils as _tu
+        import transformers.tokenization_utils_base as _tub
+        if not hasattr(_tu, "PreTrainedTokenizerBase"):
+            _tu.PreTrainedTokenizerBase = _tub.PreTrainedTokenizerBase
+    except ImportError:
+        pass
+
+    try:
+        from lmformatenforcer import JsonSchemaParser
+        from lmformatenforcer.integrations.transformers import (
+            build_transformers_prefix_allowed_tokens_fn,
+        )
+        from transformers import LogitsProcessorList
+        from transformers.generation.logits_process import (
+            PrefixConstrainedLogitsProcessor,
+        )
+    except ImportError as e:
+        import logging
+        logging.getLogger(__name__).warning(
+            "constrained_schema given but constrained-decoding deps "
+            "couldn't be imported (%s) — falling back to free-form decoding. "
+            "Install with `pip install lm-format-enforcer`.", e,
+        )
+        return None
+
+    parser = JsonSchemaParser(schema)
+    tokenizer = getattr(processor, "tokenizer", processor)
+    prefix_fn = build_transformers_prefix_allowed_tokens_fn(tokenizer, parser)
+    return LogitsProcessorList([PrefixConstrainedLogitsProcessor(prefix_fn, 1)])
 
 
 class HFBackbone:
@@ -179,12 +245,14 @@ class HFBackbone:
         system: str = "",
         max_new_tokens: int = 512,
         temperature: float = 0.0,
+        constrained_schema: Optional[dict] = None,
     ) -> str:
         return generate(
             self.model, self.processor, image, prompt,
             system=system,
             max_new_tokens=max_new_tokens,
             temperature=temperature,
+            constrained_schema=constrained_schema,
         )
 
     @classmethod

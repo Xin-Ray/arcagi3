@@ -4,7 +4,12 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from arc_agent.rewards import changes_to_set, real_changes, verify_prediction_f1
+from arc_agent.rewards import (
+    changes_to_set,
+    gated_f1_reward,
+    real_changes,
+    verify_prediction_f1,
+)
 
 
 # ---- changes_to_set ----------------------------------------------------
@@ -126,6 +131,25 @@ def test_f1_symmetric() -> None:
 
 
 # ---- end-to-end: combine primitives ------------------------------------
+
+
+# ---- gated_f1_reward (ARCHITECTURE_AGENTS §1 A2 fix) ------------------
+
+
+def test_gated_f1_zero_when_real_is_empty() -> None:
+    """Stationary frame must NOT award F1=1 — that's the stuck-agent farm."""
+    assert gated_f1_reward(set(), set()) == 0.0
+    assert gated_f1_reward({(0, 0, 1)}, set()) == 0.0
+
+
+def test_gated_f1_matches_raw_when_real_non_empty() -> None:
+    pred = {(0, 0, 1), (1, 0, 2), (2, 0, 3)}
+    real = {(0, 0, 1), (1, 0, 2)}
+    assert gated_f1_reward(pred, real) == verify_prediction_f1(pred, real)
+
+
+def test_gated_f1_zero_when_predicted_empty_real_non_empty() -> None:
+    assert gated_f1_reward(set(), {(0, 0, 1)}) == 0.0
 
 
 def test_end_to_end_full_pipeline() -> None:

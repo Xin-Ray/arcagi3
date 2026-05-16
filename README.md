@@ -66,7 +66,7 @@ py -3.12 -m venv .venv
 #    → outputs/runs/<ts>_random_baseline.jsonl
 ```
 
-**RL 流水线** — 以下脚本是计划中,尚未实现。每个脚本要做什么见 `docs/ARCHITECTURE_RL.md` §9:
+**RL 流水线** — 以下脚本是计划中,尚未实现。每个脚本要做什么见 `docs/arch_rl_v0_zh.md` §9:
 
 ```bash
 .venv\Scripts\python.exe scripts/run_baseline.py     # ★ Go/no-go gate
@@ -104,7 +104,7 @@ py -3.12 -m venv .venv
 | 🟡 脚本 | `scripts/run_grpo.py` | RL Step 7:骨架 + `--dry-run` 已跑;rollout adapter 待 Step 6 通过后接入 |
 | 🟡 脚本 | `scripts/run_validation.py` | RL Step 8:加载 LoRA + 跑 G_val + 可选 `--compare-to baseline summary`;dry-run 过 |
 | ✅ 文档 | `README.md` | 本文 |
-| ✅ 文档 | `docs/ARCHITECTURE_RL.md` | 深度设计 + §9 文件级实施步骤 |
+| ✅ 文档 | `docs/arch_rl_v0_zh.md` | 深度设计 + §9 文件级实施步骤 |
 | ✅ 文档 | `CLAUDE.md` | Claude Code 工作规则 + 已知坑 |
 | ✅ 文档 | `TASK_OVERVIEW.md` | 比赛规则全文 |
 
@@ -117,7 +117,7 @@ py -3.12 -m venv .venv
 ├── tests/            pytest(158 个全过)
 ├── data/             inputs/(测试 PNG)、train/(silver-label JSONL)
 ├── outputs/          runs/、checkpoints/、baseline_<ts>/ 等(gitignore)
-├── docs/             只有 ARCHITECTURE_RL.md
+├── docs/             只有 arch_rl_v0_zh.md
 ├── archive/          所有过时的东西 — 不要碰
 └── vendor/           只读第三方(ARC-AGI-3-Agents)
 ```
@@ -133,13 +133,13 @@ py -3.12 -m venv .venv
 | 2026-05-08 | QLoRA 烟雾训练 | 60 步 silver-label 跑 1 epoch,流水线通,adapter 已存 |
 | **TBD** | **Step 6 baseline**(Go/no-go gate) | **尚未跑** — 见 TODO |
 
-Step 6 的预注册 hypothesis:F1 ≥ 0.30、parse 成功率 ≥ 0.70、RHAE ≤ 0.05。三种迭代分支见 `docs/ARCHITECTURE_RL.md` §5.2。
+Step 6 的预注册 hypothesis:F1 ≥ 0.30、parse 成功率 ≥ 0.70、RHAE ≤ 0.05。三种迭代分支见 `docs/arch_rl_v0_zh.md` §5.2。
 
 ---
 
 ## 6. TODO(按阶段板块)
 
-6 个阶段顺序推进。**每个阶段有明确出口准则**(达到才算这阶段完),阶段内的任务都对应 `docs/ARCHITECTURE_RL.md` §9 的某个 Step,文件级 acceptance criteria 在那里看。
+6 个阶段顺序推进。**每个阶段有明确出口准则**(达到才算这阶段完),阶段内的任务都对应 `docs/arch_rl_v0_zh.md` §9 的某个 Step,文件级 acceptance criteria 在那里看。
 
 > **关于数据(读一次)**:这是 RL 不是监督学习,**没有静态训练集**。GRPO 训练数据是 agent 在 G_train 上实时生成的 rollouts(epoch 间不复用、不持久化)。"训练/验证/测试" 在本项目里 = **游戏 ID 划分**(下面 Stage 0)。唯一持久化的是每次 run 的产物(trace.jsonl + 合成图 + GIF + summary,落 `outputs/<kind>_<ts>/`)。BC 收集 / 处理流程只在 C 阶段失败回退时才启用,代码已在 `archive/bc_scripts/` 备着。
 

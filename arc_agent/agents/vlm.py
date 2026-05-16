@@ -38,6 +38,7 @@ from arc_agent.rewards import (
     real_changes,
     verify_prediction_f1,
 )
+from arc_agent.schemas import A2_OUTPUT_SCHEMA
 
 logger = logging.getLogger(__name__)
 
@@ -122,6 +123,7 @@ class VLMAgent:
         seed: Optional[int] = None,
         max_new_tokens: int = 768,
         temperature: float = 0.0,
+        constrained: bool = True,
     ) -> None:
         """Construct a VLM agent.
 
@@ -147,6 +149,7 @@ class VLMAgent:
         self._max_rules = max_rules
         self._max_new_tokens = max_new_tokens
         self._temperature = temperature
+        self._constrained = constrained
         self._rng = random.Random(seed)
         self._state = _AgentState()
 
@@ -189,12 +192,19 @@ class VLMAgent:
 
         backbone = self._ensure_backbone()
         try:
-            response_raw = backbone.generate(
-                image, user,
-                system=system,
-                max_new_tokens=self._max_new_tokens,
-                temperature=self._temperature,
-            )
+            gen_kwargs: dict[str, Any] = {
+                "system": system,
+                "max_new_tokens": self._max_new_tokens,
+                "temperature": self._temperature,
+            }
+            if self._constrained:
+                gen_kwargs["constrained_schema"] = A2_OUTPUT_SCHEMA
+            try:
+                response_raw = backbone.generate(image, user, **gen_kwargs)
+            except TypeError:
+                # Older / fake backbones don't accept constrained_schema.
+                gen_kwargs.pop("constrained_schema", None)
+                response_raw = backbone.generate(image, user, **gen_kwargs)
         except Exception as e:
             logger.warning("backbone.generate failed (%s) — fallback random", e)
             self._state.parse_failures += 1

@@ -72,3 +72,19 @@ def verify_prediction_f1(predicted: ChangeSet, real: ChangeSet) -> float:
     p = tp / len(predicted)
     r = tp / len(real)
     return 2 * p * r / (p + r)
+
+
+def gated_f1_reward(predicted: ChangeSet, real: ChangeSet) -> float:
+    """F1 reward with the stuck-agent gate from `docs/ARCHITECTURE_AGENTS.md` §1 A2.
+
+    Raw F1 awards a perfect 1.0 to a stationary frame (predicted == real == ∅),
+    which a stuck agent can farm forever. This variant returns 0 when
+    `|real| == 0` (no change occurred) regardless of the prediction, and
+    otherwise returns the standard F1 against the real change set.
+
+    Use this as the GRPO reward target; keep `verify_prediction_f1` for
+    diagnostic reporting where the raw F1 is still informative.
+    """
+    if not real:
+        return 0.0
+    return verify_prediction_f1(predicted, real)
