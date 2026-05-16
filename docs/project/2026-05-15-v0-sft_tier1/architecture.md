@@ -2,7 +2,7 @@
 
 日期: 2026-05-15
 状态: 设计 → 待实施
-前置阅读: [`architecture/v3_2_zh.md`](../v3_2/architecture.md), [`reference/v3_prompt_zh.md`](../v3/reference_prompt.md)
+前置阅读: [`architecture/v3_2_zh.md`](../2026-05-14-v3_2-double_agent/architecture.md), [`reference/v3_prompt_zh.md`](../2026-05-11-v3-baseline/reference_prompt.md)
 
 ---
 
