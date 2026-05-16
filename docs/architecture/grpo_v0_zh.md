@@ -1,8 +1,8 @@
-# ARCHITECTURE — GRPO Single-Game Training (v0)
+﻿# ARCHITECTURE — GRPO Single-Game Training (v0)
 
 日期: 2026-05-16
 状态: 设计 → 试点(可在 v3.2 + mask 跑稳后启动)
-前置阅读: [`arch_v3_2_zh.md`](./arch_v3_2_zh.md), [`arch_rl_v0_zh.md`](./arch_rl_v0_zh.md), [`arch_predictor_v0_zh.md`](./arch_predictor_v0_zh.md)
+前置阅读: [`architecture/v3_2_zh.md`](./v3_2_zh.md), [`architecture/rl_v0_zh.md`](./rl_v0_zh.md), [`architecture/predictor_v0_zh.md`](./predictor_v0_zh.md)
 
 ---
 
@@ -23,7 +23,7 @@ ARC Prize 2026 规则原文(`TASK_OVERVIEW.md`):「No task-specific optimization
 - 训练只在 **ar25** 上做
 - LoRA adapter 不进 Kaggle 提交
 - 训练数据 = ar25 rollouts(同 game 训 + eval,过拟合 OK)
-- 文档命名 `arch_grpo_v0_zh.md` 提醒「v0 是诊断」
+- 文档命名 `architecture/grpo_v0_zh.md` 提醒「v0 是诊断」
 
 ---
 
@@ -42,7 +42,7 @@ ARC Prize 2026 规则原文(`TASK_OVERVIEW.md`):「No task-specific optimization
 - 全 25 game 联训(违反规则)
 - 在线 rollout 期间更新 reward model(用 ground-truth F1)
 - 将 LoRA 用于 Kaggle 提交
-- predictor (`arch_predictor_v0_zh.md`) 集成 — 留待 v0.1,先各自验证
+- predictor (`architecture/predictor_v0_zh.md`) 集成 — 留待 v0.1,先各自验证
 
 ### 1.3 规则合规
 
@@ -55,7 +55,7 @@ ARC Prize 2026 规则原文(`TASK_OVERVIEW.md`):「No task-specific optimization
 
 ---
 
-## 2. 概念回顾(从 `arch_rl_v0_zh.md` §3)
+## 2. 概念回顾(从 `architecture/rl_v0_zh.md` §3)
 
 每步 reward:
 

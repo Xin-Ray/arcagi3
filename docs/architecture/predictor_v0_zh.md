@@ -1,8 +1,8 @@
-# ARCHITECTURE — Frame-Change Predictor (v0)
+﻿# ARCHITECTURE — Frame-Change Predictor (v0)
 
 日期: 2026-05-16
 状态: 设计 → 试点(Phase 0 / Phase 1 验证后决定是否继续)
-前置阅读: [`arch_v3_2_zh.md`](./arch_v3_2_zh.md), [`ref_v3_2_hardrules_results_zh.md`](./ref_v3_2_hardrules_results_zh.md)
+前置阅读: [`architecture/v3_2_zh.md`](./v3_2_zh.md), [`reference/v3_2_hardrules_results_zh.md`](../reference/v3_2_hardrules_results_zh.md)
 
 ---
 

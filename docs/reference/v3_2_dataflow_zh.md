@@ -1,8 +1,8 @@
-# v3.2 数据流参考 —— 三个板块的真实 I/O
+﻿# v3.2 数据流参考 —— 三个板块的真实 I/O
 
 日期: 2026-05-14
 状态: 🟢 reference
-前置阅读: [`arch_v3_2_zh.md`](./arch_v3_2_zh.md)（设计），本文是**实测数据**展开
+前置阅读: [`architecture/v3_2_zh.md`](../architecture/v3_2_zh.md)（设计），本文是**实测数据**展开
 
 > 这份文档拿 2026-05-14 真跑的 `outputs/v3_2_ar25_3x30/round_00/step=6` 做参照（ar25 第 0 轮第 7 步，`matches_reasoning=YES` 的一步——Knowledge 真实生效那一刻），把三个板块的**输入来源、SYSTEM/USER prompt、实际输出**逐字展开。改 prompt / 加新检测器 / 排查模型行为前先读这个。
 

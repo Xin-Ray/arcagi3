@@ -1,8 +1,8 @@
-# ARCHITECTURE — Tier 1 SFT(LLM spatial reasoning fine-tune)
+﻿# ARCHITECTURE — Tier 1 SFT(LLM spatial reasoning fine-tune)
 
 日期: 2026-05-15
 状态: 设计 → 待实施
-前置阅读: [`arch_v3_2_zh.md`](./arch_v3_2_zh.md), [`ref_v3_prompt_zh.md`](./ref_v3_prompt_zh.md)
+前置阅读: [`architecture/v3_2_zh.md`](./v3_2_zh.md), [`reference/v3_prompt_zh.md`](../reference/v3_prompt_zh.md)
 
 ---
 
@@ -202,7 +202,7 @@ def gen_T4():
 ### 3.6 T8: reasoning ⇄ action 一致(40k)
 
 **关键设计约束**:**T8 不得 hard-code 任何固定的 ACTION→方向绑定**。原因:
-- v3 的整套设计(`arch_v3_zh.md` + `knowledge.py:action_semantics` + `OutcomeLog`)建立在 "action 语义是 per-game 的、必须靠 OutcomeLog 当场学" 之上;`agents/llm.py:47` 注释 "ACTION1=Up..." 时也明确写 *"likely; verify by experiment"*。
+- v3 的整套设计(`architecture/v3_zh.md` + `knowledge.py:action_semantics` + `OutcomeLog`)建立在 "action 语义是 per-game 的、必须靠 OutcomeLog 当场学" 之上;`agents/llm.py:47` 注释 "ACTION1=Up..." 时也明确写 *"likely; verify by experiment"*。
 - 任何固定绑定都会让 SFT 后的模型对那种 binding 不一致的游戏(例如某 game 里 ACTION3=Up)系统性反向。
 - T8 真正要教的是 "把 user prompt 当场给的 binding 拷贝到 reasoning + action 两行,且方向词一致" —— 即 **in-context binding copying**,不是死记某个映射。
 

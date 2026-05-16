@@ -1,8 +1,8 @@
-# v3.2 硬规则实测结果 —— ar25 3 round × 30 step
+﻿# v3.2 硬规则实测结果 —— ar25 3 round × 30 step
 
 日期: 2026-05-14
 状态: 🟢 reference
-前置阅读: [`arch_v3_2_zh.md`](./arch_v3_2_zh.md) 设计, [`ref_v3_2_dataflow_zh.md`](./ref_v3_2_dataflow_zh.md) 数据流
+前置阅读: [`architecture/v3_2_zh.md`](../architecture/v3_2_zh.md) 设计, [`reference/v3_2_dataflow_zh.md`](./v3_2_dataflow_zh.md) 数据流
 
 > 这份文档是 R1 + R2 + R3 三条 orchestrator-level 硬规则（commit `1bac4be`）实施前后,在 ar25 上跑 3 round × 30 step 的真实对比。把"prompt 只能劝、orchestrator 才能管"这条原则的有效性量化了。
 
@@ -156,7 +156,7 @@ git checkout c00a825
 
 ## 7. 结论
 
-**硬规则路线得到验证**。Prompt 改 5 次都拦不住 Qwen-3B 自相矛盾选 ACTION6,加 R2 之后**一次性归零**。设计文档 [`arch_v3_2_zh.md`](./arch_v3_2_zh.md) §0 的判断 "v3 单 agent 隐含完成历史总结、推断、决策,后果是模型不积累" 在 ar25 上得到反向印证:**只要把"基于历史的决策"从模型手里拿走,放到 orchestrator,模型就能做好它擅长的(选未试过的、给单步语义)**。
+**硬规则路线得到验证**。Prompt 改 5 次都拦不住 Qwen-3B 自相矛盾选 ACTION6,加 R2 之后**一次性归零**。设计文档 [`architecture/v3_2_zh.md`](../architecture/v3_2_zh.md) §0 的判断 "v3 单 agent 隐含完成历史总结、推断、决策,后果是模型不积累" 在 ar25 上得到反向印证:**只要把"基于历史的决策"从模型手里拿走,放到 orchestrator,模型就能做好它擅长的(选未试过的、给单步语义)**。
 
 下一步要解决的是"如何让 Reflection 真的推出 win condition",而不是"如何让 Action 听 Reflection 话"——后者已经被硬规则拍死了。
 

@@ -1,8 +1,8 @@
-# ARCHITECTURE v3 —— 探索型 ARC-AGI-3 Agent
+﻿# ARCHITECTURE v3 —— 探索型 ARC-AGI-3 Agent
 
 日期: 2026-05-14
 状态: 设计 + 实施(本文是 single source of truth,旧的 v2 红字 / arch_agents_v2 都被取代)
-前置阅读: `ref_object_pipeline_zh.md`(scipy 评测结果)
+前置阅读: `reference/object_pipeline_zh.md`(scipy 评测结果)
 
 ---
 

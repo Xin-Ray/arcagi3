@@ -1,8 +1,8 @@
-# ARCHITECTURE v3.2 —— 双 Agent 分离 + 多轮 Knowledge 累积
+﻿# ARCHITECTURE v3.2 —— 双 Agent 分离 + 多轮 Knowledge 累积
 
 日期: 2026-05-14
 状态: 设计 → 实施(本文取代 v3.1 的 P2/P3 计划;P0-A、P0-B、P1 的改动**保留**)
-前置阅读: [`arch_v3_zh.md`](./arch_v3_zh.md)、[`ref_v3_prompt_zh.md`](./ref_v3_prompt_zh.md)
+前置阅读: [`architecture/v3_zh.md`](./v3_zh.md)、[`reference/v3_prompt_zh.md`](../reference/v3_prompt_zh.md)
 
 ---
 
