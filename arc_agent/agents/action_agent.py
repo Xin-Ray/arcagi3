@@ -384,7 +384,9 @@ class ActionAgent:
                 chosen = resolve_letter(letter, candidates_for_prompt)
                 if chosen is not None:
                     try:
-                        from arcengine import GameAction
+                        # GameAction is already imported at module level line 27;
+                        # do NOT re-import locally (function-scopes it -> later
+                        # UnboundLocalError in fallback paths).
                         action = GameAction[chosen.action_name]
                         if action.is_complex() and chosen.coords is not None:
                             action.set_data({"x": int(chosen.coords[0]),
