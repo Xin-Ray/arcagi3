@@ -422,6 +422,7 @@ def run_one_game(
     save_images: bool = True,
     seed: int = 42,
     preload_action_map: Optional[str] = None,
+    mask_mode: str = "strict",
 ) -> dict[str, Any]:
     """Run N rounds of one game.
 
@@ -486,13 +487,47 @@ def run_one_game(
                       file=sys.stderr)
                 break
 
-            # 1b) B: mask is now ADVISORY ONLY -- the LOW-PRIORITY ACTIONS
-            # block in the Action prompt (via R7) already informs the LLM.
-            # We DO NOT replace the LLM's choice here -- that turned out to
-            # over-fire in stateful games (e.g. ar25 ACTION1 stops working
-            # at ceiling but resumes after the player moves away). Decision
-            # power stays with the LLM; orchestrator only annotates.
+            # 1b) R2 hard rule re-enabled (2026-05-16). Original logic from
+            # commit 1bac4be that took ar25 change_rate from 23/17/17% to
+            # 60/100/97% on 3x30 step canary. The "advisory only" B-change
+            # in commit 21bca81 reverted to single-digit change_rate, so
+            # we put strict replacement back. CLI flag `--mask {strict,off}`
+            # controls; default strict.
             orch_override_reason: str = ""
+            if mask_mode != "off":
+                try:
+                    legal_names = available_action_names(latest)
+                    outcome_log_view = (
+                        action_agent.get_outcome_log()
+                        if hasattr(action_agent, "get_outcome_log") else None
+                    )
+                    if outcome_log_view is not None:
+                        mask = compute_action_mask(
+                            outcome_log_view, knowledge, legal_names,
+                        )
+                        if mask:
+                            new_name, was_replaced, reason = apply_action_mask(
+                                action.name, mask, legal_names,
+                                outcome_log_view, knowledge, _rng,
+                            )
+                            if was_replaced and new_name != action.name:
+                                action = GameAction[new_name]
+                                if action.is_complex():
+                                    action.set_data({
+                                        "x": _rng.randint(0, 63),
+                                        "y": _rng.randint(0, 63),
+                                    })
+                                orch_override_reason = reason
+                                action.reasoning = f"R2_mask: {reason}"
+                                print(
+                                    f"[round {r} step {step}] R2_mask: {reason}",
+                                    file=sys.stderr,
+                                )
+                except Exception as e:
+                    print(
+                        f"[round {r} step {step}] R2_mask error: {e}",
+                        file=sys.stderr,
+                    )
 
             # 2) env.step
             grid_before = prev_grid
@@ -815,6 +850,13 @@ def main() -> None:
     parser.add_argument("--max-new-tokens-action", type=int, default=96)
     parser.add_argument("--max-new-tokens-reflection", type=int, default=250)
     parser.add_argument(
+        "--mask", dest="mask_mode", choices=["strict", "off"], default="strict",
+        help="R2 Knowledge-driven action mask. strict (default) replaces "
+             "the LLM's pick when it hits a masked action; off lets it through "
+             "(advisory mode, used briefly between 21bca81..2026-05-16; see "
+             "docs/ref_v3_2_hardrules_results_zh.md for the data).",
+    )
+    parser.add_argument(
         "--preload-action-map",
         choices=sorted(PRELOAD_ACTION_MAPS.keys()) + ["none"],
         default="none",
@@ -858,7 +900,7 @@ def main() -> None:
             out_dir=out_dir, action_agent=action_agent,
             reflection_agent=reflection_agent, fps=args.fps,
             save_images=not args.no_images,
-            seed=args.seed,
+            seed=args.seed, mask_mode=args.mask_mode,
         )
     else:
         _check_key()
@@ -883,6 +925,7 @@ def main() -> None:
                     None if args.preload_action_map == "none"
                     else args.preload_action_map
                 ),
+                mask_mode=args.mask_mode,
             )
         finally:
             try:
@@ -905,6 +948,7 @@ def _dry_run_loop(
     *, game_id_full: str, n_rounds: int, max_actions: int,
     out_dir: Path, action_agent, reflection_agent,
     fps: int, save_images: bool, seed: int = 42,
+    mask_mode: str = "strict",
 ) -> dict[str, Any]:
     """Plumbing test: simulate `arc.make/env.reset/env.step` with a tiny
     deterministic stub. Exercises every code path in run_one_game without
@@ -950,6 +994,7 @@ def _dry_run_loop(
         out_dir=out_dir, action_agent=action_agent,
         reflection_agent=reflection_agent, fps=fps,
         save_images=save_images, seed=seed,
+        mask_mode=mask_mode,
     )
 
 
