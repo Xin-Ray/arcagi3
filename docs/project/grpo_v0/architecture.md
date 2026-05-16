@@ -2,7 +2,7 @@
 
 日期: 2026-05-16
 状态: 设计 → 试点(可在 v3.2 + mask 跑稳后启动)
-前置阅读: [`architecture/v3_2_zh.md`](./v3_2_zh.md), [`architecture/rl_v0_zh.md`](./rl_v0_zh.md), [`architecture/predictor_v0_zh.md`](./predictor_v0_zh.md)
+前置阅读: [`architecture/v3_2_zh.md`](../v3_2/architecture.md), [`architecture/rl_v0_zh.md`](../rl_v0/architecture.md), [`architecture/predictor_v0_zh.md`](../predictor_v0/architecture.md)
 
 ---
 

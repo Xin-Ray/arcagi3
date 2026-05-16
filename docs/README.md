@@ -6,159 +6,201 @@
 
 ---
 
-## 当前分支状态
-
-| 分支 | 状态 | 在做什么 |
-|---|---|---|
-| `main` | 🟢 主线 | v3.2 + mask + Knowledge + click_targets + predictor v0.1 + 文档规范化 |
-| `docs-reorg` | 🟡 本次 | 文档体系迁移到 `docs/project/<name>/` 结构 + 新 README + data.md(当前分支) |
-| `v2-canary` | 🟡 参考 | `1bac4be` 历史快照,R1+R2+R3 引入点。只读 |
-| `v2-canary-verify` | 🟡 已完成 | 复现 v2 canary 状态(86% change_rate 已验证,0 levels won)。结果留作对照基线,**不合并** |
-
----
-
 ## 0. 项目目标
 
 做一个能自主玩 ARC-AGI-3 回合制谜题游戏的 agent —— **没有任何说明书**,必须自己看出物体行为和通关条件。
 
 - 比赛: https://www.kaggle.com/competitions/arc-prize-2026-arc-agi-3
 - 里程碑: 2026-06-30 开源奖 / 2026-09-30 终评
-- 当前 SOTA (社区): Symbolica Agentica 36.08% (7/25 通关);前沿大模型(GPT/Gemini/Claude/Grok)在全私集 < 1%
+- 当前 SOTA(社区): Symbolica Agentica 36.08%(7/25 通关);前沿大模型(GPT/Gemini/Claude/Grok)在全私集 < 1%
 
 ---
 
-## 1. 整体进展(2026-05-16)
+## 1. 边界和限制
 
-| 路线 | 状态 | 最新数字 |
+| 维度 | 限制 |
+|---|---|
+| 模型 | Qwen2.5-VL-3B-Instruct(4-bit + LoRA),text-only 模式 |
+| 视觉 | 不让模型看图;scipy.ndimage.label 抽对象,LLM 看结构化文本 |
+| 规则 | **No task-specific optimization** —— 不能为特定 game 训 LoRA;不能用 demo / private game label 监督训练 |
+| Kaggle 终评 | 110 game,T4 16GB,**离线**(无网),≤ 10 小时总耗时 |
+| 工程 | Windows 11 + PowerShell + .venv (Python 3.12);GPU 一台(RTX A4500/3090) |
+
+---
+
+## 2. 当前分支状态
+
+| 分支 | 状态 | 在做什么 |
 |---|---|---|
-| **v3.2 mask + Knowledge + click_targets** | 🟢 主线在跑 | ar25 3×200 step change_rate 5-8%;0 levels won;比 mask-off baseline (2.6-3.8%) 好;远低于 v2 canary (60-100%) |
-| **Predictor v0.1 (frame-change CNN)** | 🟢 数据收集中 | CNN val AUC 0.894 (+6pp vs MLP),不接入 prompt;等扩量 |
-| **Tier 1 SFT (空间推理 LoRA)** | 🟡 第一轮 FAIL | planning probe 完全没修 + gsm8k -14.7pp,根因 T4 模板锁死;待 F3 重训 |
-| **GRPO v0 (ar25 单游戏)** | 🟡 仅设计 | 定位为诊断,Phase 0 plumbing 未开工 |
-| **v2 canary 路线复盘** | 🟡 待 A/B | 12 commit / 6300 行改动后 change_rate 退化;3 个候选回滚特征待测 |
-| **RL v0 (intrinsic F1 + GRPO)** | ⚫ parked | 被 v3 取代,代码留着 |
-| **BC pipeline** | ⚫ archive | 已归档,不复用前必须 promote |
+| `main` | 🟢 主线 | v3.2 + mask + Knowledge + click_targets + predictor v0.1 + 文档规范化 |
+| `docs-reorg` | 🟡 本次(此分支) | 文档体系迁移到 `docs/project/<name>/` 结构 + README + data.md。完成后合 main |
+| `v2-canary` | 🟡 历史快照 | `1bac4be` 的 read-only 引用,R1+R2+R3 引入点 |
+| `v2-canary-verify` | 🟡 已完成,不合并 | 在 v2-canary 上复现历史 86% change_rate(✅),作为对照基线保留 |
 
 ---
 
-## 2. 文档结构
+## 3. 当前方向(2026-05-16)
+
+整体瓶颈结论:**ar25 change_rate 7%(main)和 86%(v2 canary)都 0 通关 —— action 选择不是真正的瓶颈,目标推断 / Qwen-3B 能力天花板才是**。
+
+按 ROI 排的下一步:
+
+1. **action_proposer**:把 action 决策从「Qwen 自由生成」改成「代码生成 N 候选 + Qwen N 选 1」,playing to Qwen's strengths。预计 1 天,在 `docs/project/action_proposer_v0/` 起新分支。**这是下一个 project**。
+2. **换 game 验证模型上限**:Qwen-3B 在 bp35 / cd82 / cn04 上能不能通任何一关?如果别的 game 通,说明 ar25 是特例;全通不了,Qwen 路线封顶。
+3. **Predictor v0.1 扩量**:加 RandomAgent 跑 25 game × 200 step 收集 PNG 训练数据,重训 CNN。
+
+---
+
+## 4. 文档结构
 
 ```
 docs/
-├── INDEX_zh.md            ← 本文件
-├── CONVENTIONS_zh.md      ← 文档规范(必读 1 次)
-├── GLOSSARY_zh.md         ← 唯一术语字典
-├── architecture/          ← 架构设计文档
-└── reference/             ← prompt / 数据流 / 评测细节
-
-outputs/reports/
-├── INDEX_zh.md            ← 报告总入口
-├── <experiment>.md        ← 每次实验一份
-└── <experiment>/          ← 该报告的图
+├── README.md             ← 本文件(总入口,10 分钟读完)
+├── CONVENTIONS_zh.md     ← 文档规范(写新 doc 前看)
+├── GLOSSARY_zh.md        ← 唯一术语字典(R1-R7 / BUG-X / Knowledge / mask 等)
+├── data/
+│   └── data.md           ← 数据来源 + 内容 + 用法
+└── project/              ← 每个 project = 1 个分支 = 1 个版本
+    ├── v3/               ← scipy perception + text-only Qwen 单 agent 基线
+    ├── v3_2/             ← Action+Reflection 双 agent + 跨 round Knowledge(主线)
+    ├── predictor_v0/     ← frame-change CNN 预测器
+    ├── grpo_v0/          ← 单游戏 GRPO 诊断(未启动)
+    ├── sft_tier1/        ← 合成数据 LoRA 修空间推理(第一轮 FAIL)
+    ├── rl_v0/            ← 早期 RL 路线(parked)
+    └── v2_canary_ablation/ ← 找 v2 canary → main 退化主因(未启动)
 ```
 
-**3 分钟接管路径**:
-1. 本文 §1 (现状 + 进展)
-2. [`CONVENTIONS_zh.md`](./CONVENTIONS_zh.md) (文档规范)
-3. [`architecture/v3_2_zh.md`](./architecture/v3_2_zh.md) (当前主线)
-4. [`reports/INDEX_zh.md`](../outputs/reports/INDEX_zh.md) (最近实验)
+每个 project 子文件夹典型布局:
+- `architecture.md` —— 设计(人工核心管理)
+- `reference_*.md` —— prompt / 数据流 / 评测细节(人工核心管理)
+- `report*.md` —— 实测结果(Claude auto 写,人工审)
+- `figures/` —— 报告引用的 PNG / GIF
 
 ---
 
-## 3. 架构文档 `docs/architecture/`
+## 5. 版本历史(每个 project 一段)
 
-按时间倒序(新的在上)。
-
-| 状态 | 文档 | 一句话定位 |
-|---|---|---|
-| 🟢 | [`predictor_v0_zh.md`](./architecture/predictor_v0_zh.md) | 训一个小 CNN 预测 P(frame_change \| state, action),给 LLM 当软推荐 |
-| 🟢 | [`grpo_v0_zh.md`](./architecture/grpo_v0_zh.md) | 单游戏 ar25 上跑 GRPO,看 LLM-RL 路线有没有 ceiling(诊断,不参赛) |
-| 🟢 | [`v3_2_zh.md`](./architecture/v3_2_zh.md) | **主线**:Action Agent + Reflection Agent + 跨 round Knowledge + click_targets bandit + R1-R7 硬规则 |
-| 🟡 | [`v3_zh.md`](./architecture/v3_zh.md) | v3 单 agent:scipy perception + Qwen text-only。被 v3.2 取代,代码留着 |
-| 🟡 | [`sft_tier1_zh.md`](./architecture/sft_tier1_zh.md) | 在合成数据上 LoRA SFT 修 Qwen 的空间推理基础能力。第一轮 FAIL,F3 待跑 |
-| 🟡 | [`rl_v0_zh.md`](./architecture/rl_v0_zh.md) | 早期 RL 设计(intrinsic F1 reward + GRPO)。parked |
+按时间顺序,最新在最下面。
 
 ---
 
-## 4. 参考文档 `docs/reference/`
+### v3 — `docs/project/v3/`
 
-| 文档 | 一句话定位 |
-|---|---|
-| [`v3_prompt_zh.md`](./reference/v3_prompt_zh.md) | v3 / v3.2 prompt 逐块拆解 + 历次改造记录。**改 prompt 前必读** |
-| [`v3_2_dataflow_zh.md`](./reference/v3_2_dataflow_zh.md) | v3.2 三板块真实 I/O 走查(perception / reflection / action) |
-| [`v3_2_hardrules_results_zh.md`](./reference/v3_2_hardrules_results_zh.md) | R1+R2+R3 硬规则在 ar25 3×30 上的实测对比(change_rate 23/17/17% → 60/100/97%) |
-| [`object_pipeline_zh.md`](./reference/object_pipeline_zh.md) | 视觉感知层评测:scipy 100% vs Qwen-VL 0% |
+- **路径**: [`docs/project/v3/architecture.md`](./project/v3/architecture.md) + `reference_prompt.md` + `reference_object_pipeline.md`
+- **状态**: 🟡 被 v3.2 取代,代码留着
+- **关键 commits**: `01a7e58` (v3 初版) → `2cbd1e1` (P0-A/B) → `0aa92c4` (P1)
+- **一句话**: scipy perception + Qwen text-only 单 agent。**确立了「视觉用算法,推理用 LLM」的设计原则**
 
 ---
 
-## 5. 实验报告(总入口在 `outputs/reports/INDEX_zh.md`)
+### rl_v0 — `docs/project/rl_v0/`
 
-最近 5 份:
-
-| 报告 | 对应架构 | 一句话结论 |
-|---|---|---|
-| [`mask_revive_3x200`](../outputs/reports/mask_revive_3x200.md) | v3_2 | R2 mask 重启,change_rate 5-8% < v2 canary;发现归因 bug 已修 |
-| [`predictor_v0`](../outputs/reports/predictor_v0.md) | predictor_v0 | 4 架构对比,CNN 0.894 AUC 最好;不接入 prompt 待扩量 |
-| [`trace_balance`](../outputs/reports/trace_balance.md) | predictor_v0 | 全部 6132 step 实测 change_rate 42%,数据足够训预测器 |
-| [`grpo_v0_ar25_plan`](../outputs/reports/grpo_v0_ar25_plan.md) | grpo_v0 | GRPO 单游戏诊断的 6 张可视化布局 + 决策门预案 |
+- **路径**: [`docs/project/rl_v0/architecture.md`](./project/rl_v0/architecture.md)
+- **状态**: ⚫ parked
+- **一句话**: 最早的 RL 路线设计(intrinsic F1 reward + GRPO),实测后被 v3 取代
 
 ---
 
-## 6. 重要历史决策(看这里就不用翻 12 个 commit)
+### sft_tier1 — `docs/project/sft_tier1/`
 
-| 决策 | 日期 | 出处 |
-|---|---|---|
-| 视觉用 scipy 不用 LLM | 2026-05-11 前后 | [`reference/object_pipeline_zh.md`](./reference/object_pipeline_zh.md) |
-| v3 → v3.2 拆双 agent | 2026-05-14 | [`architecture/v3_2_zh.md`](./architecture/v3_2_zh.md) §0 |
-| R1+R2+R3 orchestrator > prompt | 2026-05-14 (commit `1bac4be`) | [`reference/v3_2_hardrules_results_zh.md`](./reference/v3_2_hardrules_results_zh.md) |
-| R2 mask 临时转 advisory | 2026-05-14 (commit `21bca81`) | -- |
-| R2 mask 重新启用 + 归因 bug 修复 | 2026-05-16 (commit `01a7227`) | [`reports/mask_revive_3x200`](../outputs/reports/mask_revive_3x200.md) |
-| Tier 1 SFT 转 F3 | 2026-05-15 (FAIL 复盘) | [`architecture/sft_tier1_zh.md`](./architecture/sft_tier1_zh.md) §12 |
+- **路径**: [`docs/project/sft_tier1/architecture.md`](./project/sft_tier1/architecture.md)
+- **状态**: 🟡 第一轮 FAIL,F3 修法待跑
+- **关键 commits**: 在 `622f4bd` 快照内
+- **一句话**: 合成数据 LoRA 修 Qwen 空间推理基础能力。第一轮 holdout 100% 但 planning probe 0% + gsm8k -14.7pp
 
 ---
 
-## 7. 关键文件(写代码前 grep)
+### v3_2 — `docs/project/v3_2/`
+
+- **路径**: [`docs/project/v3_2/architecture.md`](./project/v3_2/architecture.md) + `reference_dataflow.md` + `report_hardrules.md` + `report_mask_revive.md`
+- **状态**: 🟢 当前主线,正在迭代
+- **关键 commits**: `1bac4be` (R1+R2+R3) → `21bca81` (mask advisory) → `4680508` → `ec86881` → `439ca59` → `eac5f1a` → `01a7227` (mask 归因 fix)
+- **一句话**: Action Agent + Reflection Agent + 跨 round Knowledge + click_targets bandit + R1-R7 硬规则。实测 ar25 change_rate 5-8%,0 通关
+- **报告**:
+  - [`report_hardrules.md`](./project/v3_2/report_hardrules.md) —— R1+R2+R3 引入前后对比(60-100% change_rate)
+  - [`report_mask_revive.md`](./project/v3_2/report_mask_revive.md) —— 2026-05-16 mask 重启 + 归因 bug 修
+
+---
+
+### predictor_v0 — `docs/project/predictor_v0/`
+
+- **路径**: [`docs/project/predictor_v0/architecture.md`](./project/predictor_v0/architecture.md) + `report.md` + `report_trace_balance.md`
+- **状态**: 🟢 已完成 v0 评测,v0.1 等扩量
+- **关键 commits**: `aa75ed9` (predictor v0 base) → `3def117` (CNN +6pp) → `dfc2ee1` (tests)
+- **一句话**: 训小模型(LogReg / MLP / CNN)预测 `P(frame_change | state, action)`。CNN val AUC 0.894 最好,但 ablation 显示 13pp 信号来自 game_id 先验,真正状态信号弱。不接入 prompt,等扩量数据
+
+---
+
+### grpo_v0 — `docs/project/grpo_v0/`
+
+- **路径**: [`docs/project/grpo_v0/architecture.md`](./project/grpo_v0/architecture.md) + `report_skeleton.md`
+- **状态**: 🟡 仅设计,Phase 0 plumbing 未开工
+- **一句话**: 单游戏 ar25 GRPO 诊断 —— 看 LLM-RL 路线在 ar25 上有没有 ceiling。**不是 Kaggle 提交方案**
+
+---
+
+### v2_canary_ablation — `docs/project/v2_canary_ablation/`
+
+- **路径**: [`docs/project/v2_canary_ablation/architecture.md`](./project/v2_canary_ablation/architecture.md)
+- **状态**: 🟡 仅设计,A/B 未跑
+- **一句话**: 在 main 上加 `--reflect-semantics / --click-targets / --prompt-format` 3 个 toggle,A/B 找 v2 canary → main 退化主因
+
+---
+
+### v2_canary_verify — 仅在 `v2-canary-verify` 分支
+
+- **路径**: (主分支无;`git checkout v2-canary-verify` 后看)
+- **状态**: 🟡 已完成,不合并主线
+- **关键 commits**: 分支 `v2-canary-verify` `38d7a7d` (复原模块) → `cda68f9` (实验报告)
+- **一句话**: 在 `1bac4be` 上跑 ar25 3×30 + 2×200,复现 86% change_rate ✅。**确认 main 退化是代码引起,不是环境**。但 86% 也 0 通关 —— **trade-off:Knowledge 空 ↔ 高探索 / Knowledge 满 ↔ ACTION1 commit**
+
+---
+
+### docs-reorg — (本分支,未合并)
+
+- **路径**: 本文件 + `data/data.md` + `project/` 目录结构本身
+- **状态**: 🟡 进行中
+- **一句话**: 把扁平 `docs/architecture/` + `docs/reference/` + `outputs/reports/` 收编进 `docs/project/<name>/`,加 README + GLOSSARY + CONVENTIONS 三件套
+
+---
+
+## 6. 3 分钟接管路径
+
+刚加入项目?按这个顺序读:
+
+1. 本文(项目总览 + 当前进展)
+2. [`CONVENTIONS_zh.md`](./CONVENTIONS_zh.md)(文档规范)
+3. [`project/v3_2/architecture.md`](./project/v3_2/architecture.md)(当前主线设计)
+4. [`project/v3_2/report_mask_revive.md`](./project/v3_2/report_mask_revive.md)(最新实测)
+5. 不懂的术语 → [`GLOSSARY_zh.md`](./GLOSSARY_zh.md)
+
+---
+
+## 7. 关键代码文件(grep 入口)
 
 - `arc_agent/knowledge.py` — Knowledge dataclass
 - `arc_agent/action_mask.py` — R2 mask
 - `arc_agent/agents/{action_agent,reflection_agent}.py` — v3.2 双 agent
 - `arc_agent/predictor/` — frame-change predictor
-- `scripts/run_v3_multi_round.py` — 主 runner
-- `scripts/train_predictor.py` — 训 predictor
+- `scripts/run_v3_multi_round.py` — v3.2 主 runner
+- `scripts/train_predictor.py` — predictor 训练
 - `arc_agent/rewards.py` — intrinsic F1 reward primitives (parked)
 
 完整模块清单见 `CLAUDE.md` 的「Key modules」。
 
 ---
 
-## 8. 怎么用本文档(reader / writer 各一段)
+## 8. 维护
 
-**Reader**(刚接手项目):
-- 按上面 §2 的 3 分钟接管路径走
-- 任何概念不懂 → 直接到 [`GLOSSARY_zh.md`](./GLOSSARY_zh.md) 查
-- 想知道某次实验的细节 → 到 [`outputs/reports/INDEX_zh.md`](../outputs/reports/INDEX_zh.md) 找
+- 新方向 → 在 `docs/project/<name>/` 起目录 + 1 个 git 分支 + 写 `architecture.md`
+- 项目跑出实验 → 在该目录写 `report.md` + 把图放 `figures/`
+- 概念落地 → 加进 [`GLOSSARY_zh.md`](./GLOSSARY_zh.md)
+- 项目完结 → 回到本文 §5 加一段
+- 失败的项目 → 用户判断,在另一个分支记录代码片段 + 经验
 
-**Writer**(要写新文档):
-- 先读 [`CONVENTIONS_zh.md`](./CONVENTIONS_zh.md)
-- 新架构 → `docs/architecture/<name>_zh.md`,套 §3 模板
-- 新实验 → `outputs/reports/<name>.md`,套 §4 模板
-- 出现新概念 → 在 [`GLOSSARY_zh.md`](./GLOSSARY_zh.md) 加一条
-- 写完后在**本文 §3 / §4 / §5 表格里加一行**
-
----
-
-## 9. 命名 / 状态约定
-
-(完整规则在 [`CONVENTIONS_zh.md`](./CONVENTIONS_zh.md))
-
-- 文件名:`{arch|ref}_{name}_{version?}_{lang}.md`,**全部小写**
-- 状态:🟢 当前活 / 🟡 参考 / ⚫ 历史
-- 任何 v 前缀 (v1/v2/v3/v3_2) 表示**设计版本**,新的取代旧的
-- archive/ 是单向门;promote 回来要显式
+更多见 [`CONVENTIONS_zh.md`](./CONVENTIONS_zh.md)。
 
 ---
 
 *历史:*
-- *2026-05-16 重构:加 GLOSSARY + CONVENTIONS,把 arch_*.md / ref_*.md 移到 architecture/ + reference/。这一版按新 conventions 写。*
-- *2026-05-15 增加 Tier 1 SFT 条目*
-- *2026-05-14 初始版本*
+- *2026-05-16 重构:扁平 docs → `project/<name>/` 结构。从 INDEX_zh.md 改名而来,加分支状态表 + 版本历史。*

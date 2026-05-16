@@ -20,11 +20,11 @@ Net: mask is a **clear improvement** over mask-off baseline (8.5 % change_rate r
 | `v3_2_ar25_3x30_v2` (R2 canary) | mask strict, 3×30 | 3 | 60.0 % | 100.0 % | 96.7 % | 18 | 22 | 23 | 3 |
 | `preload_v3_budget_smoke` (mask off baseline) | mask off, 2×500 | 2 | 2.6 % | 3.8 % | — | 0 | 0 | — | 478 |
 
-Plots (in `./mask_revive_3x200/`):
+Plots (in `./figures/`):
 
-- ![per-round](./mask_revive_3x200/change_rate_per_round.png) — change_rate by round; this run sits between off baseline and v2 canary
-- ![action distribution](./mask_revive_3x200/action_dist_round0.png) — this run + off baseline both ACTION1-dominated; v2 canary is uniform
-- ![rolling change_rate timeseries](./mask_revive_3x200/change_rate_timeseries.png) — step-level change_rate trajectory (round 0)
+- ![per-round](./figures/change_rate_per_round.png) — change_rate by round; this run sits between off baseline and v2 canary
+- ![action distribution](./figures/action_dist_round0.png) — this run + off baseline both ACTION1-dominated; v2 canary is uniform
+- ![rolling change_rate timeseries](./figures/change_rate_timeseries.png) — step-level change_rate trajectory (round 0)
 
 ## Per-round action distribution (this run)
 

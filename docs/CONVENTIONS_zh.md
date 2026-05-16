@@ -16,63 +16,59 @@
 
 ```
 docs/
-├── INDEX_zh.md              ← 总入口:项目目标 + 全部文档一句话 + 进展
+├── README.md                ← 项目总入口:目标 + 边界 + 当前进展 + 版本历史
 ├── CONVENTIONS_zh.md        ← 本文件,文档规范
 ├── GLOSSARY_zh.md           ← 唯一的术语字典(R1/R2/BUG-X/Knowledge 等)
-├── architecture/            ← 架构设计文档,每篇一个版本
-│   ├── v3_zh.md
-│   ├── v3_2_zh.md
-│   ├── predictor_v0_zh.md
-│   ├── grpo_v0_zh.md
-│   ├── sft_tier1_zh.md
-│   └── rl_v0_zh.md          (parked 老路线,留作引用)
-└── reference/               ← 参考资料(prompt 详情、数据流、底层评测)
-    ├── v3_prompt_zh.md
-    ├── v3_2_dataflow_zh.md
-    ├── v3_2_hardrules_results_zh.md
-    └── object_pipeline_zh.md
+├── data/
+│   └── data.md              ← 数据来源 + 内容 + 用法
+└── project/                  ← 每个 project = 1 git 分支 = 1 个版本
+    └── <project_name>/
+        ├── architecture.md   ← 人工核心管理(设计意图、决策门、风险)
+        ├── reference_*.md    ← 人工核心管理(prompt / 数据流 / 评测细节)
+        ├── report*.md        ← Claude auto 写(实验结果、人工审)
+        └── figures/          ← 报告引用的 PNG / GIF
 
-outputs/
-└── reports/
-    ├── INDEX_zh.md          ← 报告总入口:每份报告一句话总结
-    ├── <experiment>.md      ← 实验报告(一对一对应某个 architecture)
-    └── <experiment>/         ← 该报告的图(PNG/GIF)放在这子目录
-        ├── ...png
-        └── ...
+outputs/                       不动,仍是实验产物 dir
+└── <tag>_<YYYYMMDD-HHMMSS>/   ← 跑实验的原始 trace / step PNG / play.gif
 
-archive/                     ← 单向门:被取代的旧文档/旧实验,只做考古
-└── docs_<YYYY-MM-DD>/
+archive/                       ← 单向门:被取代的旧文档/旧实验
+├── docs_<YYYY-MM-DD>/
+└── reports_<YYYY-MM-DD>/
 ```
 
 **规则**:
-- `archive/` 是单向的,东西进得去不能直接出来,要复用必须先 **promote** 回 docs/ 或 outputs/reports/
-- 任何一个 `docs/architecture/X_zh.md` 都应该至少有一份对应的 `outputs/reports/X_*.md`(可以是空骨架,等实验跑完填)
-- `outputs/reports/<experiment>/` 子目录只放该报告引用的图,不放代码
+- `archive/` 是单向的,东西进得去不能直接出来,要复用必须先 **promote** 回 docs/
+- **1 个 project = 1 个 git 分支**(命名 `feat-<name>` 或 `<name>-v0` 等);项目完结合主线
+- 每个 `docs/project/<X>/architecture.md` 都应有至少一份 `report*.md`(可以是空骨架,等实验跑完填)
+- `figures/` 子目录只放报告引用的图,不放代码、不放原始 trace
 
 ---
 
 ## 2. 命名规范
 
-### 2.1 文件名
+### 2.1 Project 文件夹名
 
 ```
-{prefix}_{name}_{version?}_{lang}.md
+docs/project/<name>_<version?>/
 ```
 
-| 元素 | 取值 | 例 |
+例:`v3`、`v3_2`、`predictor_v0`、`grpo_v0`、`action_proposer_v0`、`v2_canary_verify`。
+
+- 小写、下划线分词
+- 版本号 `v0`/`v1`/`v2`(可省略,例如 `v3_2`)
+- 1 个 folder = 1 个 git 分支(命名 `feat-<name>` 或 `<name>-v0` 等)
+
+### 2.2 Project 内的文件名
+
+| 文件 | 必须? | 内容 |
 |---|---|---|
-| `prefix` | `arch` = 架构设计;`ref` = 参考资料;`INDEX`/`GLOSSARY`/`CONVENTIONS` 例外 | `arch_v3_2_zh.md` |
-| `name` | 小写,下划线分词 | `predictor`、`v3_2`、`hardrules_results` |
-| `version` | `v1`/`v2`/`v3`/`v3_2`/`v0`...(可省略) | `v0` |
-| `lang` | `zh` 中文(默认主版本)/`en` 英文 | `zh` |
+| `architecture.md` | ✅ 必须 | 设计意图(套 §3 模板) |
+| `reference_<aspect>.md` | 可选 | prompt / 数据流 / 评测细节,每个 aspect 一个文件 |
+| `report.md` | ✅ 实验跑完必须 | 主实验报告(套 §4 模板) |
+| `report_<experiment>.md` | 可选 | 多个子实验时,每个一个 |
+| `figures/<name>.png` | 可选 | 报告引用的图 |
 
-**报告文件名**(`outputs/reports/`):
-```
-{architecture_name}[_<detail>].md
-```
-例:`predictor_v0.md`、`mask_revive_3x200.md`、`trace_balance.md`
-
-### 2.2 目录名(实验产物)
+### 2.3 实验产物目录名(`outputs/`)
 
 ```
 outputs/<tag>_<YYYYMMDD-HHMMSS>/
@@ -84,9 +80,11 @@ outputs/<tag>_<YYYYMMDD-HHMMSS>/
 - `report.md`(automated,简短)
 - 数据(trace.jsonl / metrics.json / 等)
 
+实验跑完,把人审报告写到 `docs/project/<project>/report.md`(套 §4 模板),把关键图复制到 `docs/project/<project>/figures/`。原始数据**留在 `outputs/`** 不动(gitignore)。
+
 ---
 
-## 3. 架构文档模板(`docs/architecture/<name>_zh.md`)
+## 3. 架构文档模板(`docs/project/<name>/architecture.md`)
 
 每个架构设计文档**必须**有这 10 节,顺序固定:
 
@@ -170,7 +168,7 @@ outputs/<tag>_<YYYYMMDD-HHMMSS>/
 
 ---
 
-## 4. 实验报告模板(`outputs/reports/<name>.md`)
+## 4. 实验报告模板(`docs/project/<name>/report.md` 或 `report_<exp>.md`)
 
 每个实验报告**必须**有这 8 节,顺序固定:
 
@@ -178,7 +176,7 @@ outputs/<tag>_<YYYYMMDD-HHMMSS>/
 # <Title> — <一句话定位>
 
 生成时间: YYYY-MM-DD HH:MM
-对应架构: [`docs/architecture/X_zh.md`](../../docs/architecture/X_zh.md)
+对应架构: [`architecture.md`](./architecture.md)
 源数据: `outputs/<run_dir>/`
 状态: <进行中 | 已完成 | 失败 | 部分>
 
@@ -257,23 +255,20 @@ outputs/<run_dir>/
 
 ---
 
-## 6. 索引条目格式
+## 6. README 里的版本历史条目格式
 
-### `docs/INDEX_zh.md` 里的条目
-
-```markdown
-- 🟢/🟡/⚫ [`name`](./architecture/name_zh.md) — 一句话定位(< 80 字符)
-```
-
-`🟢` = 当前活的(代码 ground truth);
-`🟡` = 参考(留着但不主动改);
-`⚫` = 历史(被取代,留考古)
-
-### `outputs/reports/INDEX_zh.md` 里的条目
+每个 project 一段(顺序按时间):
 
 ```markdown
-- [`name`](./name.md) (YYYY-MM-DD) — 对应 [arch X](../../docs/architecture/X_zh.md) — 一句话结论。关键指标 N%。
+### <project_name> — `docs/project/<name>/`
+
+- **路径**: [`docs/project/<name>/architecture.md`](./project/<name>/architecture.md) + 列其它关键文件
+- **状态**: 🟢 当前活 / 🟡 参考 / ⚫ 历史
+- **关键 commits**: `<hash1>` → `<hash2>` → `<hash3>`(或 commit 范围)
+- **一句话**: 项目本质(< 80 字符) + 最新实测数字
 ```
+
+`🟢` = 当前活(代码 ground truth);`🟡` = 参考(留着但不主动改);`⚫` = 历史(被取代)
 
 ---
 
@@ -294,12 +289,13 @@ outputs/<run_dir>/
 
 ## 8. 流程:什么时候写什么
 
-1. **想做一个新方向** → 先写 `docs/architecture/<name>_zh.md` 草稿(至少 §0、§1、§3、§6)
-   → 跟用户对齐 → 补完 §4-§10 → commit
-2. **架构跑出实验数据** → 同步写 `outputs/reports/<name>.md`
-   → 把图放进 `outputs/reports/<name>/` → commit + 更新两个 INDEX
-3. **架构被取代** → 旧文档状态改成 `⚫`,在 INDEX 移动到 archive 区段;不删
-4. **发现新概念** → 写到 `GLOSSARY_zh.md`;在使用它的文档里用 `[[term]]` 链接
+1. **想做一个新方向** → 开 git 分支 `feat-<name>` → 起 `docs/project/<name>/` 目录 → 写 `architecture.md` 草稿(至少 §0、§1、§3、§6)
+   → 跟用户对齐 → 补完 §4-§9 → commit
+2. **架构跑出实验数据** → 同 project 目录写 `report.md`(套 §4 模板)
+   → 把图放 `figures/` 子目录 → commit + 在 `README.md` §5 加版本历史条目
+3. **架构被取代** → 旧 project 状态改成 ⚫,在 README §5 标记;不删
+4. **项目失败** → 用户判断;在该分支留报告 + 经验,主分支不合并代码,只合并经验文档
+5. **发现新概念** → 写到 `GLOSSARY_zh.md`;在使用它的文档里用 `[[term]]` 链接
 
 ---
 

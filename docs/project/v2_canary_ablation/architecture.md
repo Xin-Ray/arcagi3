@@ -1,9 +1,9 @@
-# ARCHITECTURE — v2 Canary Ablation (v0)
+﻿# ARCHITECTURE — v2 Canary Ablation (v0)
 
 日期: 2026-05-16
 状态: 设计 → 待跑(用户决定后启动)
-取代关系: 不取代任何文档 — 是 [v3_2](./v3_2_zh.md) 的诊断分支
-前置阅读: [`v3_2_zh.md`](./v3_2_zh.md)、[`../reference/v3_2_hardrules_results_zh.md`](../reference/v3_2_hardrules_results_zh.md)
+取代关系: 不取代任何文档 — 是 [v3_2](../v3_2/architecture.md) 的诊断分支
+前置阅读: [`v3_2_zh.md`](../v3_2/architecture.md)、[`../v3_2/report_hardrules.md`](../v3_2/report_hardrules.md)
 
 ---
 
