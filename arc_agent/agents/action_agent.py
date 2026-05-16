@@ -72,6 +72,26 @@ _ACTION_RE = re.compile(r"\bACTION([1-7])\b", re.IGNORECASE)
 _COORD_RE = re.compile(r"\bACTION6\b[^\d-]*?(\d+)\D+?(\d+)", re.IGNORECASE)
 _REASONING_RE = re.compile(r"reasoning\s*:\s*(.+?)(?:\n|$)", re.IGNORECASE)
 _ACTION_LINE_RE = re.compile(r"action\s*:\s*(.+?)(?:\n|$)", re.IGNORECASE)
+_CHOICE_LINE_RE = re.compile(r"choice\s*:\s*([A-G])", re.IGNORECASE)
+
+
+def parse_choice_letter(text: str) -> Optional[str]:
+    """Pull the 'choice: X' letter from a multi-choice response.
+
+    Tolerant of case, whitespace, and prose-prefix. Returns uppercase
+    letter or None.
+    """
+    if not isinstance(text, str):
+        return None
+    m = _CHOICE_LINE_RE.search(text)
+    if m:
+        return m.group(1).upper()
+    # Fallback: look for a standalone letter at start of any line
+    for line in text.splitlines():
+        line = line.strip().strip(".:,)")
+        if len(line) == 1 and line.upper() in "ABCDEFG":
+            return line.upper()
+    return None
 
 
 def parse_reasoning_and_action(text: str) -> tuple[str, str]:
@@ -157,6 +177,10 @@ class ActionAgent:
         self._rng = random.Random(seed)
         self._state = _ActionAgentState()
         self._knowledge: Knowledge = Knowledge.empty()
+        # v0 action_proposer toggle (set via runner --propose flag).
+        # When True, code proposes K=3 candidates and LLM picks letter.
+        self.use_proposer: bool = False
+        self._last_candidates: list = []
 
     # ── public API ────────────────────────────────────────────────────────
 
@@ -278,6 +302,25 @@ class ActionAgent:
         ct_for_prompt = list(self._knowledge.click_targets) or None
         cc_for_prompt = None if ct_for_prompt else click_cands
 
+        # v0 action_proposer: generate K=3 candidates for multi-choice prompt
+        candidates_for_prompt = None
+        if self.use_proposer:
+            from arc_agent.action_proposer import propose as _propose
+            recent_names = [s[0] for s in self._state.recent if isinstance(s, tuple)] \
+                if hasattr(self._state, "recent") else []
+            # Fallback: get from outcome_log
+            if not recent_names:
+                recent_names = [o.action for o in self._state.outcome_log.all_steps[-5:]]
+            candidates_for_prompt = _propose(
+                self._knowledge,
+                self._state.outcome_log,
+                legal_names,
+                recent_action_names=recent_names,
+                rng=self._rng,
+                k=3,
+            )
+            self._last_candidates = candidates_for_prompt
+
         user_prompt = build_action_user_prompt(
             knowledge=self._knowledge,
             step=self._state.step_count,
@@ -299,6 +342,7 @@ class ActionAgent:
             object_relations=relations,
             exploration_hint=exploration_hint or None,
             click_targets=ct_for_prompt,
+            candidates=candidates_for_prompt,
         )
         self._state.last_prompt = ACTION_SYSTEM + "\n\n" + user_prompt
 
@@ -331,9 +375,26 @@ class ActionAgent:
         reasoning, action_text = parse_reasoning_and_action(self._state.last_response_raw)
         self._state.last_reasoning = reasoning
 
-        action = self._coerce_action(action_text, latest,
-                                     frame_objects=current_objs,
-                                     layer_by_id=layer_by_id)
+        # v0 action_proposer: if candidates were provided, parse letter first
+        action = None
+        if self.use_proposer and candidates_for_prompt:
+            from arc_agent.action_proposer import resolve_letter
+            letter = parse_choice_letter(self._state.last_response_raw)
+            if letter:
+                chosen = resolve_letter(letter, candidates_for_prompt)
+                if chosen is not None:
+                    try:
+                        from arcengine import GameAction
+                        action = GameAction[chosen.action_name]
+                        if action.is_complex() and chosen.coords is not None:
+                            action.set_data({"x": int(chosen.coords[0]),
+                                             "y": int(chosen.coords[1])})
+                    except (KeyError, AttributeError):
+                        action = None
+        if action is None:
+            action = self._coerce_action(action_text, latest,
+                                         frame_objects=current_objs,
+                                         layer_by_id=layer_by_id)
 
         # 6) anti-collapse postprocess (reject repeat when in diversification)
         if action is not None and diversification is not None:

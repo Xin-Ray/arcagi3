@@ -306,6 +306,7 @@ def build_action_user_prompt(
     object_relations: Optional[Any] = None,
     exploration_hint: Optional[str] = None,
     click_targets: Optional[list[ClickTarget]] = None,
+    candidates: Optional[list[Any]] = None,
 ) -> str:
     """Compose the v3.2 Action Agent USER prompt in 7 blocks max.
 
@@ -363,7 +364,17 @@ def build_action_user_prompt(
             "[ACTION stats]\n" + render_action_block(outcome_log, legal_actions)
         )
 
-    blocks.append(_ACTION_ASK_BLOCK)
+    # New: code-proposed candidates (action_proposer v0)
+    if candidates:
+        from arc_agent.action_proposer import candidates_to_prompt_block
+        cand_block = candidates_to_prompt_block(candidates)
+        if cand_block:
+            blocks.append(cand_block)
+            blocks.append(_ACTION_ASK_BLOCK_MC)
+        else:
+            blocks.append(_ACTION_ASK_BLOCK)
+    else:
+        blocks.append(_ACTION_ASK_BLOCK)
     return "\n\n".join(blocks)
 
 
@@ -371,6 +382,11 @@ _ACTION_ASK_BLOCK = """[ASK]
   Output TWO lines (no JSON, no markdown):
     reasoning: <one sentence, mention the expected effect>
     action: <ACTION1..ACTION7 -- only ACTION6 takes x y>"""
+
+_ACTION_ASK_BLOCK_MC = """[ASK]
+  Pick exactly one candidate by its letter. Output TWO lines:
+    reasoning: <one sentence justifying the pick vs the others>
+    choice: <A | B | C>"""
 
 
 # ─── Reflection USER prompt ─────────────────────────────────────────────────

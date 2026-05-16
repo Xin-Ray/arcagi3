@@ -866,6 +866,13 @@ def main() -> None:
              "docs/ref_v3_2_hardrules_results_zh.md for the data).",
     )
     parser.add_argument(
+        "--propose", dest="propose", choices=["on", "off"], default="off",
+        help="Code-side action proposer (v0). on = generate K=3 candidates "
+             "and ask LLM to pick a letter. off = LLM picks action freely "
+             "(default for backward-compat). See "
+             "docs/project/2026-05-16-v0-action_proposer/architecture.md",
+    )
+    parser.add_argument(
         "--preload-action-map",
         choices=sorted(PRELOAD_ACTION_MAPS.keys()) + ["none"],
         default="none",
@@ -897,6 +904,12 @@ def main() -> None:
         max_new_tokens_action=args.max_new_tokens_action,
         max_new_tokens_reflection=args.max_new_tokens_reflection,
     )
+
+    # v0 action_proposer: toggle on the agent if --propose on
+    if hasattr(action_agent, "use_proposer"):
+        action_agent.use_proposer = (args.propose == "on")
+        if action_agent.use_proposer:
+            print("[propose] action_proposer v0 ON -- K=3 multi-choice prompt")
 
     if args.dry_run:
         # Bypass SDK entirely -- use a stub arc / env so plumbing is testable
