@@ -1,8 +1,19 @@
-# 文档总入口 (INDEX_zh.md)
+# 项目总入口 (README.md)
 
-> 进项目前先读这个。状态码 🟢 当前活、🟡 参考、⚫ 历史。
+> 10 分钟看完知道现状。状态码 🟢 当前活、🟡 参考、⚫ 历史。
 
 最近更新: 2026-05-16
+
+---
+
+## 当前分支状态
+
+| 分支 | 状态 | 在做什么 |
+|---|---|---|
+| `main` | 🟢 主线 | v3.2 + mask + Knowledge + click_targets + predictor v0.1 + 文档规范化 |
+| `docs-reorg` | 🟡 本次 | 文档体系迁移到 `docs/project/<name>/` 结构 + 新 README + data.md(当前分支) |
+| `v2-canary` | 🟡 参考 | `1bac4be` 历史快照,R1+R2+R3 引入点。只读 |
+| `v2-canary-verify` | 🟡 已完成 | 复现 v2 canary 状态(86% change_rate 已验证,0 levels won)。结果留作对照基线,**不合并** |
 
 ---
 
