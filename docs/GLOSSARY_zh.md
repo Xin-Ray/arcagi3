@@ -88,6 +88,27 @@
 
 **出处**: [`reports/predictor_v0.md`](../outputs/reports/predictor_v0.md)。
 
+### `CoT (Chain-of-Thought)`
+
+🟢 推理模式 — 模型在 final answer 前先生成一段 reasoning chain(`<think>...</think>` for Phi-4-reasoning,默认 mode for SmolLM3)。我们用 [[bench_models_spatial]] 实测:SmolLM3 CoT **72.4%** accuracy vs `/no_think` **55.2%** —— **17pp 差距全在 CoT chain 里**。生产太慢(~26s/step),只在 bench 用。
+
+**出处**: [`project/2026-05-17-v0-model_bench/report.md`](./project/2026-05-17-v0-model_bench/report.md)。
+**相关**: [[/no_think]]、[[SmolLM3-3B]]、[[reasoning_mode]]。
+
+### `CausalLMBackbone`
+
+🟢 `arc_agent/vlm_backbone.py` 中的类,wrap 任意 `AutoModelForCausalLM`(SmolLM3 / Phi-4 / DeepSeek-R1-Distill)成 [[VLMBackbone]] 接口给 ActionAgent 用。带 `reasoning_mode` 参数(`auto` / `cot` / `no_think`)。
+
+**出处**: `arc_agent/vlm_backbone.py`(2026-05-17 加)。
+**相关**: [[HFBackbone]](Qwen-VL 用)、[[make_backbone]]、[[reasoning_mode]]。
+
+### `Candidate`
+
+🟢 `arc_agent/action_proposer.py` 的 dataclass:`letter` + `action_name` + `coords` + `reason`。Code propose K=3 个候选,Qwen N 选 1,letter 顺序 shuffled 避免位置偏好。
+
+**出处**: [[action_proposer]]。
+**相关**: [[propose K=3]]、[[N 选 1]]。
+
 ---
 
 ## D
@@ -114,6 +135,12 @@
 🟢 trace.jsonl 每行的核心 boolean:`grid_t != grid_{t+1}`?决定一步是 no-op 还是真正改变了状态。
 
 **出处**: `arc_agent/observation.py`、所有 trace 写入处。
+
+### `5×2×300`
+
+🟢 我们的「跨游戏完整评测」标准配置:G_base 5 个 game × 2 round × max 300 step。**最早**(2026-05-16 提出),**首次完整跑** 2026-05-17 SmolLM3,wall clock 2.88h。Qwen 同配置数据**仍缺失**(只有 3×30 smoke 和被 kill 的部分跑)。
+
+**出处**: `scripts/run_action_proposer_5game.py`、[`project/2026-05-17-v0-model_bench/report_5game.md`](./project/2026-05-17-v0-model_bench/report_5game.md)。
 
 ---
 
@@ -162,6 +189,18 @@
 ---
 
 ## M
+
+### `make_backbone`
+
+🟢 `arc_agent/vlm_backbone.py` 工厂函数。根据 model_path 自动 dispatch:Qwen2.5-VL-* → `HFBackbone`,其它 → `CausalLMBackbone`。接受 `reasoning_mode` 参数。
+
+**出处**: `arc_agent/vlm_backbone.py`(2026-05-17 加)。
+
+### `model_bench` (v0)
+
+🟢 `2026-05-17-v0-model_bench` project。在 28 道 [[spatial probe]] 上 sequential bench 3 候选 model:Qwen2.5-VL-3B / Phi-4-mini-reasoning / SmolLM3-3B。winner: SmolLM3 CoT 72.4%。但 `/no_think` 模式 SmolLM3 = 55.2% = Qwen。
+
+**出处**: [`project/2026-05-17-v0-model_bench/`](./project/2026-05-17-v0-model_bench/)、`scripts/bench_models_spatial.py`。
 
 ### `mask` / `R2 mask`
 
@@ -234,6 +273,19 @@
 
 **出处**: [`architecture/v3_zh.md`](./architecture/v3_zh.md) §0。
 
+### `Phi-4-mini-reasoning`
+
+❌ Microsoft 3.8B 模型,公开 ARC-Challenge 83.7%。我们实测 [[model_bench]] **41.4%** —— **低于 Qwen baseline 55.2%**。原因:`<think>` reasoning chain 在 multi-choice 算术题上经常走偏 / 被 512 token 截断。**不选用**。
+
+**出处**: [`project/2026-05-17-v0-model_bench/report.md`](./project/2026-05-17-v0-model_bench/report.md) §4。
+
+### `propose / proposer (action_proposer v0)`
+
+🟢 `arc_agent/action_proposer.py`。代码 propose K=3 [[Candidate]](slot 1: untried;slot 2: known-good 排除 over-committed;slot 3: click_target 或 random)。Qwen N 选 1,letter shuffle 避免位置偏好。
+
+**出处**: [`project/2026-05-16-v0-action_proposer/`](./project/2026-05-16-v0-action_proposer/)。
+**相关**: [[N 选 1]]、[[Candidate]]。
+
 ### `Predictor v0`
 
 🟢 frame-change 预测器。给 `(state, action)` 输出 `P(frame_change)`。四个架构对比:LogReg / MLP-S / MLP-L / CNN-small。val AUC 0.80-0.89。
@@ -249,6 +301,24 @@
 ---
 
 ## R
+
+### `reasoning_mode`
+
+🟢 `arc_agent/vlm_backbone.py` 的 `CausalLMBackbone` 参数:
+- `auto` — 模型默认(SmolLM3: `no_think`,生产 ~3-4s/step)
+- `cot` — 强制 chain-of-thought,准但慢(~26s/step)
+- `no_think` — 显式注入 `/no_think` (SmolLM3)
+
+CLI: `scripts/run_v3_multi_round.py --reasoning-mode {auto,cot,no_think}`(2026-05-17 加)。
+
+**出处**: 同 [[CausalLMBackbone]]。
+
+### `/no_think`
+
+🟢 SmolLM3 的系统 flag。`/no_think` 前置到 system prompt 让模型跳过 `<think>...</think>` chain,直接答。**生产模式必须开**(不然 22h 跑 5×2×300)。但实测 accuracy 从 72.4% 掉到 55.2% (= [[Qwen-VL-3B]] baseline) —— **空间推理优势全在 CoT chain 里**。
+
+**出处**: [`project/2026-05-17-v0-model_bench/report.md`](./project/2026-05-17-v0-model_bench/report.md)、HF SmolLM3-3B docs。
+**相关**: [[CoT]]、[[reasoning_mode]]、[[SmolLM3-3B]]。
 
 ### `R1..R7` (hard rules)
 
@@ -303,6 +373,19 @@
 🟢 v3 perception 的根:64×64 grid → 连通分量。比 Qwen-VL 在 ar25 上 100% vs ~0% 的对比由 [`reference/object_pipeline_zh.md`](./reference/object_pipeline_zh.md) 实测。
 
 **出处**: `arc_agent/object_extractor.py`。
+
+### `SmolLM3-3B`
+
+🟢 **2026-05-17 实测候选 backbone**。HuggingFace 开源 3B,dual-mode reasoning。spatial probe **CoT 72.4%** / **`/no_think` 55.2%**。**5×2×300 在生产 `/no_think` 模式下 mean change_rate 64%**(vs Qwen baseline 5-8%),0/5 game 通关。但优势可能不在空间推理(等于 Qwen),而在 instruction following + action_proposer 协同。
+
+**出处**: [`project/2026-05-17-v0-model_bench/`](./project/2026-05-17-v0-model_bench/)、HF `HuggingFaceTB/SmolLM3-3B`。
+**相关**: [[/no_think]]、[[CoT]]、[[CausalLMBackbone]]、[[model_bench]]。
+
+### `spatial probe` / `T1..T8`
+
+🟢 28 道 4-multi-choice spatial reasoning 测试题,基于真实 game 机制(64×64 grid, ACTION1=UP, ACTION3=LEFT 等,1 cell per move)校准。8 类:T1 direction / T2 single-step / T3 multi-step plan / T4 boundary / T5 multi-dim / T6 selection / T7 inverse plan / T8 distance。`arc_agent/bench_probes/__init__.py`。
+
+**出处**: 2026-05-17 加,详 [`project/2026-05-17-v0-model_bench/architecture.md`](./project/2026-05-17-v0-model_bench/architecture.md) §2。
 
 ### `state_revisit_count`
 

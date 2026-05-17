@@ -170,14 +170,22 @@ outputs/<tag>_<YYYYMMDD-HHMMSS>/
 
 ## 4. 实验报告模板(`docs/project/<name>/report.md` 或 `report_<exp>.md`)
 
-每个实验报告**必须**有这 8 节,顺序固定:
+每个实验报告**必须**有这 8 节,顺序固定。
+
+**强制规则 (2026-05-17 新增)**:
+- **报告头部必须列出所有原始 `outputs/` 路径**(orchestrator 日志、per-game 目录、metrics.json、figures source 等)。读者点开就能找到原始数据,不用 grep 找。
+- 报告里**引用具体数字时,如有可能在括号给文件路径**,例:「ar25 round 0 87% (`outputs/smollm3_5game_ar25_*/round_00/trace.jsonl`)」
+- 报告末尾 `## 8. 文件清单` 必须完整 ASCII 树状图,列出所有 `outputs/` 产物 + `docs/project/<name>/` 产物
 
 ````markdown
 # <Title> — <一句话定位>
 
 生成时间: YYYY-MM-DD HH:MM
 对应架构: [`architecture.md`](./architecture.md)
-源数据: `outputs/<run_dir>/`
+源数据:
+  - `outputs/<run_dir>/`(主)
+  - `outputs/<related_run>/`(对照)
+  - 其它 …
 状态: <进行中 | 已完成 | 失败 | 部分>
 
 ## TL;DR

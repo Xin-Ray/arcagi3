@@ -239,12 +239,14 @@ class _DryRunReflectionAgent:
 def _make_agents(
     *, dry_run: bool, seed: int, max_new_tokens_action: int,
     max_new_tokens_reflection: int, backbone_path: str = "",
+    reasoning_mode: str = "auto",
 ):
     if dry_run:
         return _DryRunActionAgent(seed=seed), _DryRunReflectionAgent()
 
     from arc_agent.vlm_backbone import make_backbone, DEFAULT_MODEL
-    backbone = make_backbone(backbone_path or DEFAULT_MODEL)
+    backbone = make_backbone(backbone_path or DEFAULT_MODEL,
+                             reasoning_mode=reasoning_mode)
     action_agent = ActionAgent(
         backbone=backbone, seed=seed,
         max_new_tokens=max_new_tokens_action,
@@ -874,6 +876,13 @@ def main() -> None:
              "through CausalLMBackbone heuristic.",
     )
     parser.add_argument(
+        "--reasoning-mode", dest="reasoning_mode",
+        choices=["auto", "cot", "no_think"], default="auto",
+        help="auto (default) = model-specific fast default (SmolLM3: /no_think). "
+             "cot = force chain-of-thought (slower, better accuracy on probes). "
+             "no_think = explicit suppression where supported.",
+    )
+    parser.add_argument(
         "--propose", dest="propose", choices=["on", "off"], default="off",
         help="Code-side action proposer (v0). on = generate K=3 candidates "
              "and ask LLM to pick a letter. off = LLM picks action freely "
@@ -912,6 +921,7 @@ def main() -> None:
         max_new_tokens_action=args.max_new_tokens_action,
         max_new_tokens_reflection=args.max_new_tokens_reflection,
         backbone_path=args.backbone_path,
+        reasoning_mode=args.reasoning_mode,
     )
 
     # v0 action_proposer: toggle on the agent if --propose on

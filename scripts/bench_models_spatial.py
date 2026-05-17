@@ -139,11 +139,20 @@ def load_model(entry: dict, dtype: str = "bfloat16"):
 
 
 def generate_answer(model, tokenizer, system: str, user: str,
-                    max_new_tokens: int = 96) -> str:
-    """Apply chat template, generate text-only, decode."""
+                    max_new_tokens: int = 96, no_think: bool = False,
+                    model_hf_id: str = "") -> str:
+    """Apply chat template, generate text-only, decode.
+
+    `no_think=True` injects model-specific reasoning-mode suppression:
+      - SmolLM3: prepend "/no_think" to system prompt
+      - Phi-4-mini-reasoning: not supported (architecture-level, can't disable)
+    """
     import torch
+    sys_text = system
+    if no_think and "SmolLM3" in model_hf_id and "/no_think" not in sys_text:
+        sys_text = (system + "\n/no_think").strip() if system else "/no_think"
     messages = [
-        {"role": "system", "content": system},
+        {"role": "system", "content": sys_text},
         {"role": "user", "content": user},
     ]
     try:
@@ -180,7 +189,8 @@ def free_model(model) -> None:
 
 
 def run_bench_one_model(entry: dict, probes: list[dict],
-                        max_new_tokens: int = 96) -> dict:
+                        max_new_tokens: int = 96,
+                        no_think: bool = False) -> dict:
     """Returns a dict with per-probe results + summary."""
     print(f"\n=== {entry['label']} ({entry['hf_id']}) ===", flush=True)
     t0 = time.time()
@@ -201,7 +211,9 @@ def run_bench_one_model(entry: dict, probes: list[dict],
         t_start = time.time()
         try:
             raw = generate_answer(model, tokenizer, SYSTEM_PROMPT, user_msg,
-                                  max_new_tokens=max_new_tokens)
+                                  max_new_tokens=max_new_tokens,
+                                  no_think=no_think,
+                                  model_hf_id=entry["hf_id"])
             elapsed = time.time() - t_start
         except Exception as e:
             raw = ""
@@ -365,6 +377,9 @@ def main() -> None:
     parser.add_argument("--max-new-tokens", type=int, default=96)
     parser.add_argument("--models", default="all",
                         help="Comma list of model ids (qwen2_5_vl_3b,phi4_mini_reasoning,smollm3_3b) or 'all'")
+    parser.add_argument("--no-think", dest="no_think", action="store_true",
+                        help="Inject reasoning-mode-off flag (e.g. /no_think for SmolLM3). "
+                             "Matches production CausalLMBackbone behaviour.")
     args = parser.parse_args()
 
     if args.models == "all":
@@ -391,7 +406,8 @@ def main() -> None:
     all_results = []
     for entry in chosen:
         result = run_bench_one_model(entry, probes,
-                                      max_new_tokens=args.max_new_tokens)
+                                      max_new_tokens=args.max_new_tokens,
+                                      no_think=args.no_think)
         all_results.append(result)
         # Dump per-model probe log right away
         per_model_path = out_dir / f"per_probe_{entry['id']}.jsonl"

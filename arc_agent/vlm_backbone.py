@@ -278,10 +278,21 @@ class CausalLMBackbone:
     we are text-only by design.
     """
 
-    def __init__(self, model: Any, tokenizer: Any, hf_id: str = "") -> None:
+    def __init__(self, model: Any, tokenizer: Any, hf_id: str = "",
+                 reasoning_mode: str = "auto") -> None:
+        """
+        reasoning_mode:
+            "auto"     — model-dependent default (SmolLM3: no_think,
+                         Phi-4-reasoning: keep on; others: nothing).
+                         Picks "no_think" for SmolLM3 to keep production fast.
+            "cot"      — force chain-of-thought reasoning (no /no_think).
+                         Slower; use for fair eval comparison.
+            "no_think" — explicit /no_think injection where supported.
+        """
         self.model = model
         self.tokenizer = tokenizer
         self.hf_id = hf_id
+        self.reasoning_mode = reasoning_mode
 
     def generate(
         self,
@@ -297,11 +308,14 @@ class CausalLMBackbone:
         import torch
 
         # Model-specific reasoning-mode suppression for inference speed.
-        # Some models (SmolLM3, Phi-4-reasoning) emit a long <think>...
-        # chain before the answer, which makes them 50-100x slower per call
-        # and busts our 6h budget on 5x2x300 runs.
+        # Auto mode = no_think for SmolLM3 (production default; ~10x faster).
+        # cot mode = no injection (full reasoning; slower; for fair bench eval).
         sys_text = system
-        if "SmolLM3" in self.hf_id and "/no_think" not in sys_text:
+        want_no_think = (
+            self.reasoning_mode == "no_think" or
+            (self.reasoning_mode == "auto" and "SmolLM3" in self.hf_id)
+        )
+        if want_no_think and "SmolLM3" in self.hf_id and "/no_think" not in sys_text:
             # SmolLM3 docs: prepend "/no_think" to system to disable extended
             # thinking. With /think (default) it generates <reasoning>... ;
             # /no_think makes it answer directly.
@@ -342,6 +356,7 @@ class CausalLMBackbone:
         cls,
         model_path: str,
         quantize: Optional[str] = "4bit",
+        reasoning_mode: str = "auto",
     ) -> "CausalLMBackbone":
         import torch
         from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -365,7 +380,8 @@ class CausalLMBackbone:
 
         model = AutoModelForCausalLM.from_pretrained(model_path, **kwargs)
         model.eval()
-        return cls(model, tokenizer, hf_id=model_path)
+        return cls(model, tokenizer, hf_id=model_path,
+                   reasoning_mode=reasoning_mode)
 
 
 # ─── Factory ─────────────────────────────────────────────────────────────
@@ -386,6 +402,7 @@ def make_backbone(
     model_path: str = DEFAULT_MODEL,
     quantize: Optional[str] = "4bit",
     lora_path: Optional[str] = None,
+    reasoning_mode: str = "auto",
 ) -> VLMBackbone:
     """Factory: return the right backbone for the given model_path.
 
@@ -393,10 +410,13 @@ def make_backbone(
       1. exact match in `_BACKBONE_REGISTRY`
       2. heuristic: any "Qwen2.5-VL" / "Qwen2_5_VL" in the path → VL
       3. fallback → CausalLM
+
+    `reasoning_mode` applies only to CausalLMBackbone.
     """
     btype = _BACKBONE_REGISTRY.get(model_path)
     if btype is None:
         btype = "vl" if ("Qwen2.5-VL" in model_path or "Qwen2_5_VL" in model_path) else "causal"
     if btype == "vl":
         return HFBackbone.load(model_path, quantize=quantize, lora_path=lora_path)
-    return CausalLMBackbone.load(model_path, quantize=quantize)
+    return CausalLMBackbone.load(model_path, quantize=quantize,
+                                  reasoning_mode=reasoning_mode)
