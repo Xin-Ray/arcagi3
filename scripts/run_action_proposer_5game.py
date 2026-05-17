@@ -8,9 +8,12 @@ Per docs/project/2026-05-16-v0-action_proposer/architecture.md §6
 
 Usage:
     .venv/Scripts/python.exe scripts/run_action_proposer_5game.py
+        [--backbone microsoft/Phi-4-mini-reasoning]
+        [--tag-prefix ap5game]
 """
 from __future__ import annotations
 
+import argparse
 import subprocess
 import sys
 import time
@@ -25,8 +28,14 @@ MAX_STEPS = 300
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--backbone", default="",
+                        help="HF model id; empty = Qwen2.5-VL-3B default")
+    parser.add_argument("--tag-prefix", default="ap5game")
+    args = parser.parse_args()
+
     ts = time.strftime("%Y%m%d-%H%M%S")
-    run_root = REPO / f"outputs/ap5game_{ts}"
+    run_root = REPO / f"outputs/{args.tag_prefix}_{ts}"
     run_root.mkdir(parents=True, exist_ok=True)
     log_root = run_root / "logs"
     log_root.mkdir(exist_ok=True)
@@ -36,10 +45,12 @@ def main() -> None:
 
     for i, game in enumerate(GAMES):
         game_ts = time.strftime("%Y%m%d-%H%M%S")
-        tag = f"ap5game_{game}"
+        tag = f"{args.tag_prefix}_{game}"
         log_file = log_root / f"{game}.log"
         print(f"\n=== [{i+1}/5] {game} (rounds={ROUNDS}, max_steps={MAX_STEPS}) ===",
               flush=True)
+        if args.backbone:
+            print(f"    backbone: {args.backbone}", flush=True)
         print(f"    log: {log_file}", flush=True)
         start = time.time()
         cmd = [
@@ -53,6 +64,8 @@ def main() -> None:
             "--propose", "on",
             "--tag", tag,
         ]
+        if args.backbone:
+            cmd.extend(["--backbone", args.backbone])
         try:
             with log_file.open("w", encoding="utf-8") as f:
                 result = subprocess.run(
