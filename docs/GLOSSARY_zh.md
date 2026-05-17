@@ -93,7 +93,33 @@
 🟢 推理模式 — 模型在 final answer 前先生成一段 reasoning chain(`<think>...</think>` for Phi-4-reasoning,默认 mode for SmolLM3)。我们用 [[bench_models_spatial]] 实测:SmolLM3 CoT **72.4%** accuracy vs `/no_think` **55.2%** —— **17pp 差距全在 CoT chain 里**。生产太慢(~26s/step),只在 bench 用。
 
 **出处**: [`project/2026-05-17-v0-model_bench/report.md`](./project/2026-05-17-v0-model_bench/report.md)。
-**相关**: [[/no_think]]、[[SmolLM3-3B]]、[[reasoning_mode]]。
+**相关**: [[/no_think]]、[[/think]]、[[CoT 激活率]]、[[SmolLM3-3B]]、[[reasoning_mode]]。
+
+### `CoT 激活率` (CoT activation rate)
+
+🟢 **单个 probe / step 上 CoT chain 是否真的被生成的比例**。具体度量(目前用):**probe 的 `elapsed_s > 10s`** —— SmolLM3 短路径直接答 Answer: X 通常 ≤ 1.5s,激活 CoT 链一般 20-40s,**阈值放 10s 即可区分**。
+
+**为什么重要**: [[subtask probe]] 实测 5 subtask × 100 probe,**激活率几乎单调决定 accuracy**:
+
+| Subtask | 激活率 | accuracy |
+|---|---:|---:|
+| T-GOAL | 0/100 | 30% (≈随机) |
+| T-NAV-3 | 1/100 | 67% |
+| T-NAV-1 | 11/100 | 52%(激活时 90.9%) |
+| T-SEL-1 | 86/100 | 78% |
+| T-NAV-2 | 100/100 | 95% ✅ |
+
+**关键性质**:
+1. **任务驱动,非系统 flag 驱动** — 同一 model + 同一 prompt 配置下,不同 subtask 激活率从 0% 到 100% 不等;模型按问题"看起来需不需要算"自行决定
+2. **`/think` 不能强制激活** — T-NAV-1 加/不加 `/think` 都是 11/100;`/think` 只能避免已激活的 chain 在 1024 tokens 处被截
+3. **激活了几乎都对** — 5 subtask 里激活子集 acc 普遍 79-95%,所以问题不是"推理弱",而是"该推理时没推理"
+
+**用法**: 拿 per_probe.jsonl 后 `awk '$elapsed_s>10'` 看激活率;低 (< 50%) 就该改 prompt 而不是改模型。
+
+**Production fix 思路**: user prompt 加 `"Let's solve step by step. Show your reasoning."` 把激活率推到 80%+;或把 "判断" 类任务(如 [[T-GOAL]])改成 deterministic Python,绕开 LLM 推理。
+
+**出处**: [`project/2026-05-17-v0-subtask_decomp/report.md`](./project/2026-05-17-v0-subtask_decomp/report.md) §4,5 个 [[subtask probe]] report。
+**相关**: [[CoT]]、[[/think]]、[[/no_think]]、[[reasoning_mode]]、[[subtask probe]]。
 
 ### `CausalLMBackbone`
 
@@ -322,10 +348,12 @@ CLI: `scripts/run_v3_multi_round.py --reasoning-mode {auto,cot,no_think}`(2026-0
 
 ### `/think`
 
-🟢 SmolLM3 的另一个系统 flag,显式打开 reasoning chain。**没有它的话 SmolLM3 默认行为不稳定**:T-NAV-1 实测 100 probes 中只有 11 个真激活 CoT(其余短路径),整体 acc 跌到 48%。**`bench_subtask.py:generate()` 在 reasoning_mode='cot' 时必须显式注入 `/think`**(2026-05-17 16:00 修复)。
+🟢 SmolLM3 的另一个系统 flag,显式打开 reasoning chain。**`bench_subtask.py:generate()` 在 reasoning_mode='cot' 时必须显式注入 `/think`**(2026-05-17 16:00 修复)。
 
-**出处**: [`project/2026-05-17-v0-subtask-T-NAV-1/report.md`](./project/2026-05-17-v0-subtask-T-NAV-1/report.md) §4。
-**相关**: [[/no_think]]、[[CoT]]、[[reasoning_mode]]、[[subtask probe]]、[[SmolLM3-3B]]。
+**重要修正(2026-05-17 17:50)**: 注入 `/think` **不能提升 [[CoT 激活率]]**(T-NAV-1 注入前后都是 11/100),只能让已激活的 chain 在 1024 tokens 内不被截断,从而把"激活时 accuracy"从 54.5% 提到 90.9%。整体 acc 仅 +4pp。**要强制激活,得改 user prompt(加 "Let's solve step by step"),不是改 system flag**。
+
+**出处**: [`project/2026-05-17-v0-subtask-T-NAV-1/report.md`](./project/2026-05-17-v0-subtask-T-NAV-1/report.md) §4 + §7。
+**相关**: [[CoT 激活率]]、[[/no_think]]、[[CoT]]、[[reasoning_mode]]、[[subtask probe]]、[[SmolLM3-3B]]。
 
 ### `subtask probe`
 
