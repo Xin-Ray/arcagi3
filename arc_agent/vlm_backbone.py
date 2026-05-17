@@ -296,9 +296,20 @@ class CausalLMBackbone:
         """Apply chat template, generate text, decode."""
         import torch
 
+        # Model-specific reasoning-mode suppression for inference speed.
+        # Some models (SmolLM3, Phi-4-reasoning) emit a long <think>...
+        # chain before the answer, which makes them 50-100x slower per call
+        # and busts our 6h budget on 5x2x300 runs.
+        sys_text = system
+        if "SmolLM3" in self.hf_id and "/no_think" not in sys_text:
+            # SmolLM3 docs: prepend "/no_think" to system to disable extended
+            # thinking. With /think (default) it generates <reasoning>... ;
+            # /no_think makes it answer directly.
+            sys_text = (sys_text + "\n/no_think").strip() if sys_text else "/no_think"
+
         messages: list[dict] = []
-        if system:
-            messages.append({"role": "system", "content": system})
+        if sys_text:
+            messages.append({"role": "system", "content": sys_text})
         messages.append({"role": "user", "content": prompt})
 
         try:
