@@ -119,7 +119,103 @@
 **Production fix 思路**: user prompt 加 `"Let's solve step by step. Show your reasoning."` 把激活率推到 80%+;或把 "判断" 类任务(如 [[T-GOAL]])改成 deterministic Python,绕开 LLM 推理。
 
 **出处**: [`project/2026-05-17-v0-subtask_decomp/report.md`](./project/2026-05-17-v0-subtask_decomp/report.md) §4,5 个 [[subtask probe]] report。
-**相关**: [[CoT]]、[[/think]]、[[/no_think]]、[[reasoning_mode]]、[[subtask probe]]。
+**相关**: [[CoT]]、[[/think]]、[[/no_think]]、[[reasoning_mode]]、[[subtask probe]]、[[短路径]]、[[elapsed_s]]、[[per_probe.jsonl]]、[[CoT 截断]]。
+
+### `短路径` (short-path)
+
+🟢 模型 **跳过 [[CoT]] chain 直接给 Answer: X** 的行为(SmolLM3 / Phi-4-mini-reasoning 等双模型一致)。表现是 `<think>...</think>` 区段为空或几乎为空,生成只有 1-3 个 token,耗时 ≤ 1.5s。
+
+**对照 (5 subtask × 100 probe SmolLM3)**:
+
+| 模式 | elapsed_s | tokens 生成数 | accuracy 范围 |
+|---|---|---|---|
+| 短路径 | ≤ 1.5s | < 30 tokens | 30-71%(看任务) |
+| 激活 CoT | 20-40s | 300-1000 tokens | 79-95% |
+
+**为什么模型选短路径**: 它把 prompt 模式识别成 "multiple choice letter pattern" 而非 "推理题",尤其是 4 选 1 中有显眼的不正确选项时(distractor 太明显)。
+
+**怎么对抗**: user prompt 加 "Let's solve step by step. Show your work." 或题目结尾改 "Show your reasoning, then end with Answer: X"。
+
+**出处**: [`project/2026-05-17-v0-subtask-T-NAV-1/report.md`](./project/2026-05-17-v0-subtask-T-NAV-1/report.md) §4、[`project/2026-05-17-v0-subtask_decomp/report.md`](./project/2026-05-17-v0-subtask_decomp/report.md) §4.1。
+**相关**: [[CoT]]、[[CoT 激活率]]、[[long_acc / short_acc]]、[[elapsed_s]]。
+
+### `long_acc / short_acc`
+
+🟢 把 [[per_probe.jsonl]] 按 [[elapsed_s]] 是否 > 10s 二分,分别算 accuracy:
+- `long_acc` = "激活了 CoT 的 probe 子集" 的正确率
+- `short_acc` = "走 [[短路径]] 的 probe 子集" 的正确率
+
+**用法 (诊断)**: 整体 accuracy 低有两种原因 ——
+1. `long_acc` 低 → 模型推理能力不够,**该换模型**
+2. `long_acc` 高 + [[CoT 激活率]] 低 → 模型有能力但没用,**该改 prompt**
+
+**实测例 (T-NAV-1 v1)**: 整体 52%,但 `long_acc = 90.9%`(n=11),`short_acc = 47.2%`(n=89) → 第 2 种情况,problem 是没激活。
+
+**怎么算 (Python)**:
+```python
+import json
+rows = [json.loads(l) for l in open("per_probe_smollm3-cot.jsonl")]
+long  = [r for r in rows if r["elapsed_s"] > 10]
+short = [r for r in rows if r["elapsed_s"] <= 10]
+long_acc  = sum(r["ok"] for r in long)  / max(1, len(long))
+short_acc = sum(r["ok"] for r in short) / max(1, len(short))
+```
+
+**出处**: 5 个 subtask report §3、`docs/project/2026-05-17-v0-subtask_decomp/report.md` §4.1。
+**相关**: [[CoT 激活率]]、[[per_probe.jsonl]]、[[elapsed_s]]、[[短路径]]。
+
+### `elapsed_s`
+
+🟢 [[per_probe.jsonl]] 每行的字段,**单次 model.generate() 调用的 wall time(秒)**。`scripts/bench_subtask.py` 在每条 probe 推理外面 `time.time()` 包一层量出来。
+
+**用途**:
+1. 区分 [[短路径]] vs 激活 CoT:阈值 10s(实测 SmolLM3 中间区基本空,要么 ≤ 1.5s 要么 ≥ 20s)
+2. 估算 GPU 吞吐 (`total_s / n_probes`)
+3. 诊断 max_new_tokens 设置 —— 若 elapsed_s 接近"1024 tokens / 模型 tps"上限,大概率发生了 [[CoT 截断]]
+
+**阈值参数说明**: 10s 是 SmolLM3-3B 4-bit 在 RTX A4500 上的经验值;**换 GPU / 模型 / quant 都要重测**。
+
+**出处**: `scripts/bench_subtask.py:166-186` (timing 代码)。
+**相关**: [[per_probe.jsonl]]、[[CoT 激活率]]、[[短路径]]、[[CoT 截断]]。
+
+### `per_probe.jsonl`
+
+🟢 [[subtask probe]] 和 [[spatial probe]] bench 的**逐 probe 输出文件**。每行一个 JSON object,无序无 schema 强约束,字段:
+
+| 字段 | 含义 |
+|---|---|
+| `id` | probe ID (如 "T-NAV-1-0042") |
+| `correct` | ground-truth 字母 (A/B/C/D) |
+| `guessed` | 模型选的字母,parse 失败为 `null` |
+| `ok` | bool, 是否选对 |
+| `elapsed_s` | 推理 wall time,秒;见 [[elapsed_s]] |
+| `raw_tail` | 最后 200 chars,用来事后诊断 |
+
+**文件名格式**: `per_probe_<model_key>.jsonl`(如 `per_probe_smollm3-cot.jsonl`)。**多 model 并跑时一个 model 一个文件**。
+
+**位置**: `outputs/subtask_<TASK>_<ts>/per_probe_<model>.jsonl` 或 `outputs/bench_<ts>/per_probe_<model>.jsonl`。
+
+**配合**: 同目录还有 `metrics.json` (汇总 accuracy / load_s / total_s) + `summary.md` (markdown 表格)。
+
+**出处**: `scripts/bench_subtask.py:228-231`、`scripts/bench_subtask_batch.py:71-74`。
+**相关**: [[subtask probe]]、[[spatial probe]]、[[long_acc / short_acc]]、[[elapsed_s]]、[[model_bench]]。
+
+### `CoT 截断` (CoT truncation)
+
+🟢 模型生成的 [[CoT]] chain **超过 `max_new_tokens` 上限,被 generate() 强制截断**;表现是 `<think>...</think>` 没闭合或末尾没有 `Answer: X` → parse 出 `guessed=null`。
+
+**实测影响**: T-NAV-1 v0 用 `max_new_tokens=512`,有些 long-CoT response 卡在 chain 中间(`raw_tail` 显示推理还在继续就被切了)。提高到 1024 后:
+- T-NAV-1 [[long_acc]] 54.5% → 90.9%(同一批 11 个激活样本,把"被截的"救活变正确)
+- T-NAV-1 整体 acc 48% → 52%(因为大头是 [[短路径]] 没被截断的)
+
+**诊断**: per_probe.jsonl 里 `guessed == null` 的 probe 多半就是这种情况;或者 [[elapsed_s]] 顶到"1024 tokens / 模型 tps"上限 (~38s for SmolLM3 4-bit) 就要警惕。
+
+**设置建议**:
+- bench: `max_new_tokens = 1024`(留余量给 think chain)
+- production: 256-512,因为 think chain 在 production prompt 里通常被 `/no_think` 关掉
+
+**出处**: [`project/2026-05-17-v0-subtask-T-NAV-1/report.md`](./project/2026-05-17-v0-subtask-T-NAV-1/report.md) §7 (v0 vs v1 对照表)。
+**相关**: [[CoT]]、[[CoT 激活率]]、[[/think]]、[[long_acc / short_acc]]、[[elapsed_s]]。
 
 ### `CausalLMBackbone`
 
