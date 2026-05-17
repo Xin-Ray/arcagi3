@@ -320,6 +320,28 @@ CLI: `scripts/run_v3_multi_round.py --reasoning-mode {auto,cot,no_think}`(2026-0
 **出处**: [`project/2026-05-17-v0-model_bench/report.md`](./project/2026-05-17-v0-model_bench/report.md)、HF SmolLM3-3B docs。
 **相关**: [[CoT]]、[[reasoning_mode]]、[[SmolLM3-3B]]。
 
+### `/think`
+
+🟢 SmolLM3 的另一个系统 flag,显式打开 reasoning chain。**没有它的话 SmolLM3 默认行为不稳定**:T-NAV-1 实测 100 probes 中只有 11 个真激活 CoT(其余短路径),整体 acc 跌到 48%。**`bench_subtask.py:generate()` 在 reasoning_mode='cot' 时必须显式注入 `/think`**(2026-05-17 16:00 修复)。
+
+**出处**: [`project/2026-05-17-v0-subtask-T-NAV-1/report.md`](./project/2026-05-17-v0-subtask-T-NAV-1/report.md) §4。
+**相关**: [[/no_think]]、[[CoT]]、[[reasoning_mode]]、[[subtask probe]]、[[SmolLM3-3B]]。
+
+### `subtask probe`
+
+🟢 把「通关」拆成 7 个原子可测子任务的合成 probe 集。每个 subtask 一个 `gen_*()` 函数,生成 100 道 4 选 1 题。当前实现: T-NAV-1(单步方向)、T-NAV-2(多步同方向计数)、T-NAV-3(轴切换两段路径)、T-SEL-1(bbox 内坐标 ACTION6)、T-GOAL(yes/no 判定目标达成)。每子任务一个 git 分支 + report,PASS 阈值 ≥ 90%(允许 LLM 失误率高但下游纠错)。
+
+**出处**: [`project/2026-05-17-v0-subtask_decomp/architecture.md`](./project/2026-05-17-v0-subtask_decomp/architecture.md)、`arc_agent/subtask_probes/__init__.py`、`scripts/bench_subtask.py` / `bench_subtask_batch.py`。
+**相关**: [[spatial probe]]、[[/think]]、[[T-NAV-1]]、[[T-NAV-2]]、[[T-NAV-3]]、[[T-SEL-1]]、[[T-GOAL]]。
+
+### `T-NAV-1`
+
+🟢 [[subtask probe]] 之一: **单步方向选择**。给定 `(r1,c1) → (r2,c2)`,target 共行或共列,delta ∈ ±[1..6]。4 选 1 from {ACTION1=UP, ACTION2=DOWN, ACTION3=LEFT, ACTION4=RIGHT}。
+
+**实测**: SmolLM3 CoT 无 `/think`: **48% FAIL**(只 11/100 真激活 CoT);修 `/think` 后重测中。
+
+**出处**: `arc_agent/subtask_probes/__init__.py:gen_T_NAV_1`、[`project/2026-05-17-v0-subtask-T-NAV-1/report.md`](./project/2026-05-17-v0-subtask-T-NAV-1/report.md)。
+
 ### `R1..R7` (hard rules)
 
 🟢 v3.2 orchestrator-级硬规则。**Prompt 只能劝,orchestrator 才能管**的设计原则下产生。

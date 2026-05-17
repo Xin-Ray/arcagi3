@@ -2,7 +2,7 @@
 
 > 10 分钟看完知道现状。状态码 🟢 当前活、🟡 参考、⚫ 历史。
 
-最近更新: 2026-05-17 14:55
+最近更新: 2026-05-17 16:30(T-NAV-1 验证完成 + /think 注入 bug 修复)
 
 > **昨晚跨分支汇报**: [`tonight_summary.md`](./tonight_summary.md) + [`figures/tonight_summary.png`](./figures/tonight_summary.png)
 
@@ -36,6 +36,7 @@
 |---|---|---|---|
 | `main` | 🟢 主线 | `e07e7d1` (2026-05-16) | v3.2 + mask + Knowledge + click_targets。**没有任何 push/merge 发生**;所有新工作都在 feature 分支 |
 | `feat-2026-05-16-v0-action_proposer` | 🟢 **活跃** | (本分支)`b29mzqh3m` 跑中 | 包含 action_proposer + model_bench + SmolLM3 5×2×300 + CoT 1×2×100 跑中 |
+| `feat-2026-05-17-v0-subtask-T-NAV-1` | 🟢 **当前** | `b9e2e87` (2026-05-17) | T-NAV-1 100 probes 完成,48% FAIL(/think 未注入);修 bug 重跑中 (`bs2hz6jxz`,5 subtasks × 100 probes) |
 | `docs-reorg` | 🟡 等合 | `181d0b6` (2026-05-16) | 文档体系迁移,昨天写完 |
 | `feat-2026-05-16-v01-predictor` | ❌ 不合 | `722db78` (2026-05-16) | CNN OOD AUC 0.16 失败结论存档 |
 | `feat-2026-05-16-v0-grpo_train` | ⏳ Phase 0 | `11ed21f` (2026-05-16) | rollout_wrapper + 10 unit tests pass。真训练未跑 |
@@ -85,6 +86,7 @@
 | **Phi-4-mini-reasoning 在 spatial probe** | bench accuracy **41.4%**(低于 Qwen 55.2%);reasoning chain 走偏 | model_bench (2026-05-17) |
 | **SmolLM3 `/no_think` 模式 spatial 推理** | bench 55.2% **完全等于 Qwen baseline** —— CoT 的 17pp 优势消失 | model_bench (2026-05-17) |
 | **任何 backbone 单换都解决通关** | SmolLM3 5×2×300 mean 64% change_rate 但 **0 levels won 全 5 game** | model_bench (2026-05-17) |
+| **T-NAV-1 单步方向选择 / SmolLM3 CoT(无 `/think` 注入)** | 48.0%(目标 ≥ 90%);只 11/100 真激活 CoT,其余短路径 | subtask-T-NAV-1 (2026-05-17) |
 
 ### ⚠️ 部分有用 / 待补充验证
 
@@ -126,12 +128,26 @@ docs/
     ├── 2026-05-16-v0-grpo_train/            Phase 0 plumbing
     ├── 2026-05-16-v0-v2_canary_ablation/
     ├── 2026-05-16-v0-action_proposer/        K=3 propose + N 选 1
-    └── 2026-05-17-v0-model_bench/            🆕 3 model bench + SmolLM3 5×2×300 + /no_think 发现
+    ├── 2026-05-17-v0-model_bench/            3 model bench + SmolLM3 5×2×300 + /no_think 发现
+    ├── 2026-05-17-v0-subtask_decomp/         7 subtask DAG 总设计
+    └── 2026-05-17-v0-subtask-T-NAV-1/        🆕 单步方向 verify(48% FAIL,/think 修中)
 ```
 
 ---
 
 ## 6. 版本历史(最新在上)
+
+---
+
+### 2026-05-17 16:30 — 🟢 subtask-T-NAV-1 v0 — `docs/project/2026-05-17-v0-subtask-T-NAV-1/`
+
+- **分支**: `feat-2026-05-17-v0-subtask-T-NAV-1`(当前)
+- **关键 commits**: `b9e2e87`(batch runner)
+- **一句话**: T-NAV-1 (单步方向) 100 probes SmolLM3 CoT = **48.0% FAIL** (目标 ≥90%)。根因: `bench_subtask.py:generate()` 对 `cot` 模式**没注入 `/think`**,导致 89/100 probe 短路径不思考;已修,batch 重跑 5 个 subtask 中
+- **关键 outputs**:
+  - `outputs/subtask_T-NAV-1_20260517-161834/`(metrics + per_probe + summary)
+  - `outputs/bench_subtask_T-NAV-1_v2.log`(运行日志)
+  - `outputs/bench_subtask_batch_v1_think.log`(/think 修复版重跑,跑中)
 
 ---
 

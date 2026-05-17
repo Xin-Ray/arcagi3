@@ -124,8 +124,11 @@ def generate(model, tokenizer, system: str, user: str, entry: dict,
     sys_text = system
     rm = entry.get("reasoning_mode", "auto")
     if "SmolLM3" in entry["hf_id"]:
-        want_no_think = rm in ("no_think", "auto")
-        if want_no_think and "/no_think" not in sys_text:
+        if rm == "no_think" and "/no_think" not in sys_text:
+            sys_text = (system + "\n/no_think").strip() if system else "/no_think"
+        elif rm == "cot" and "/think" not in sys_text:
+            sys_text = (system + "\n/think").strip() if system else "/think"
+        elif rm == "auto" and "/no_think" not in sys_text:
             sys_text = (system + "\n/no_think").strip() if system else "/no_think"
     messages = [
         {"role": "system", "content": sys_text},
