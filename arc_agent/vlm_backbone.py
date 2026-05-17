@@ -264,3 +264,128 @@ class HFBackbone:
     ) -> "HFBackbone":
         model, processor = load_model(model_path, quantize, lora_path=lora_path)
         return cls(model, processor)
+
+
+# ─── Causal LM backbone (Phi-4-mini-reasoning / SmolLM3-3B / etc) ─────────
+
+
+class CausalLMBackbone:
+    """Adapter exposing VLMBackbone Protocol over a text-only causal LM.
+
+    Used to plug Phi-4-mini-reasoning, SmolLM3-3B, or any AutoModelForCausalLM
+    HF model into the existing v3.2 ActionAgent path (which originally only
+    supported Qwen2.5-VL). The `image` argument to `.generate()` is ignored —
+    we are text-only by design.
+    """
+
+    def __init__(self, model: Any, tokenizer: Any, hf_id: str = "") -> None:
+        self.model = model
+        self.tokenizer = tokenizer
+        self.hf_id = hf_id
+
+    def generate(
+        self,
+        image: Any,
+        prompt: str,
+        *,
+        system: str = "",
+        max_new_tokens: int = 512,
+        temperature: float = 0.0,
+        constrained_schema: Optional[dict] = None,
+    ) -> str:
+        """Apply chat template, generate text, decode."""
+        import torch
+
+        messages: list[dict] = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
+
+        try:
+            prompt_str = self.tokenizer.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=True,
+            )
+        except Exception:
+            # Fallback for tokenizers without chat template
+            prompt_str = (
+                (f"{system}\n\n" if system else "")
+                + f"User: {prompt}\nAssistant:"
+            )
+
+        inputs = self.tokenizer(prompt_str, return_tensors="pt").to(self.model.device)
+        gen_kwargs: dict[str, Any] = {
+            "max_new_tokens": max_new_tokens,
+            "do_sample": temperature > 0.0,
+            "pad_token_id": self.tokenizer.eos_token_id,
+        }
+        if temperature > 0.0:
+            gen_kwargs["temperature"] = temperature
+
+        with torch.no_grad():
+            out = self.model.generate(**inputs, **gen_kwargs)
+        gen_ids = out[0][inputs["input_ids"].shape[1]:]
+        return self.tokenizer.decode(gen_ids, skip_special_tokens=True)
+
+    @classmethod
+    def load(
+        cls,
+        model_path: str,
+        quantize: Optional[str] = "4bit",
+    ) -> "CausalLMBackbone":
+        import torch
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+
+        tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
+
+        kwargs: dict[str, Any] = {"trust_remote_code": True, "device_map": "auto"}
+        if quantize == "4bit":
+            from transformers import BitsAndBytesConfig
+            kwargs["quantization_config"] = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_compute_dtype=torch.bfloat16,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_use_double_quant=True,
+            )
+        elif quantize == "8bit":
+            from transformers import BitsAndBytesConfig
+            kwargs["quantization_config"] = BitsAndBytesConfig(load_in_8bit=True)
+        else:
+            kwargs["torch_dtype"] = torch.bfloat16
+
+        model = AutoModelForCausalLM.from_pretrained(model_path, **kwargs)
+        model.eval()
+        return cls(model, tokenizer, hf_id=model_path)
+
+
+# ─── Factory ─────────────────────────────────────────────────────────────
+
+
+# Known model IDs and which backbone class to use.
+_BACKBONE_REGISTRY: dict[str, str] = {
+    "Qwen/Qwen2.5-VL-3B-Instruct": "vl",
+    "Qwen/Qwen2.5-VL-7B-Instruct": "vl",
+    "microsoft/Phi-4-mini-reasoning": "causal",
+    "microsoft/Phi-4-mini-instruct": "causal",
+    "HuggingFaceTB/SmolLM3-3B": "causal",
+    "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B": "causal",
+}
+
+
+def make_backbone(
+    model_path: str = DEFAULT_MODEL,
+    quantize: Optional[str] = "4bit",
+    lora_path: Optional[str] = None,
+) -> VLMBackbone:
+    """Factory: return the right backbone for the given model_path.
+
+    Dispatch by:
+      1. exact match in `_BACKBONE_REGISTRY`
+      2. heuristic: any "Qwen2.5-VL" / "Qwen2_5_VL" in the path → VL
+      3. fallback → CausalLM
+    """
+    btype = _BACKBONE_REGISTRY.get(model_path)
+    if btype is None:
+        btype = "vl" if ("Qwen2.5-VL" in model_path or "Qwen2_5_VL" in model_path) else "causal"
+    if btype == "vl":
+        return HFBackbone.load(model_path, quantize=quantize, lora_path=lora_path)
+    return CausalLMBackbone.load(model_path, quantize=quantize)

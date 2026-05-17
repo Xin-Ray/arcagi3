@@ -238,13 +238,13 @@ class _DryRunReflectionAgent:
 
 def _make_agents(
     *, dry_run: bool, seed: int, max_new_tokens_action: int,
-    max_new_tokens_reflection: int,
+    max_new_tokens_reflection: int, backbone_path: str = "",
 ):
     if dry_run:
         return _DryRunActionAgent(seed=seed), _DryRunReflectionAgent()
 
-    from arc_agent.vlm_backbone import HFBackbone
-    backbone = HFBackbone.load()
+    from arc_agent.vlm_backbone import make_backbone, DEFAULT_MODEL
+    backbone = make_backbone(backbone_path or DEFAULT_MODEL)
     action_agent = ActionAgent(
         backbone=backbone, seed=seed,
         max_new_tokens=max_new_tokens_action,
@@ -866,6 +866,14 @@ def main() -> None:
              "docs/ref_v3_2_hardrules_results_zh.md for the data).",
     )
     parser.add_argument(
+        "--backbone", dest="backbone_path", default="",
+        help="HF model id for the LLM backbone. Empty = default "
+             "(Qwen/Qwen2.5-VL-3B-Instruct). Recognised: "
+             "microsoft/Phi-4-mini-reasoning, HuggingFaceTB/SmolLM3-3B, "
+             "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B. Anything else goes "
+             "through CausalLMBackbone heuristic.",
+    )
+    parser.add_argument(
         "--propose", dest="propose", choices=["on", "off"], default="off",
         help="Code-side action proposer (v0). on = generate K=3 candidates "
              "and ask LLM to pick a letter. off = LLM picks action freely "
@@ -903,6 +911,7 @@ def main() -> None:
         dry_run=args.dry_run, seed=args.seed,
         max_new_tokens_action=args.max_new_tokens_action,
         max_new_tokens_reflection=args.max_new_tokens_reflection,
+        backbone_path=args.backbone_path,
     )
 
     # v0 action_proposer: toggle on the agent if --propose on
