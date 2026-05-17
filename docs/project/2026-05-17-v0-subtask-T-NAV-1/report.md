@@ -6,12 +6,22 @@
 
 ## 0. 原始数据 (outputs/ 引用)
 
+**v0 (无 /think 注入,baseline)**
+
 | 文件 | 说明 |
 |---|---|
 | `outputs/subtask_T-NAV-1_20260517-161834/metrics.json` | 汇总: 48/100, total 511.4s |
-| `outputs/subtask_T-NAV-1_20260517-161834/per_probe_smollm3-cot.jsonl` | 100 条 per-probe (id/correct/guessed/ok/elapsed/raw_tail) |
-| `outputs/subtask_T-NAV-1_20260517-161834/summary.md` | 表格摘要 |
-| `outputs/bench_subtask_T-NAV-1_v2.log` | 运行日志,含 progress 行 |
+| `outputs/subtask_T-NAV-1_20260517-161834/per_probe_smollm3-cot.jsonl` | 100 条 per-probe |
+| `outputs/bench_subtask_T-NAV-1_v2.log` | v0 运行日志 |
+
+**v1 (/think 注入 + 1024 tokens,batch 第 1 个 subtask)**
+
+| 文件 | 说明 |
+|---|---|
+| `outputs/subtask_T-NAV-1_20260517-163018/metrics.json` | 汇总: 52/100, total 555.3s |
+| `outputs/subtask_T-NAV-1_20260517-163018/per_probe_smollm3-cot.jsonl` | 100 条 per-probe |
+| `outputs/subtask_batch_20260517-163018/{metrics.json,summary.md}` | 跨 5 个 subtask 汇总 |
+| `outputs/bench_subtask_batch_v1_think.log` | batch 运行日志 |
 
 ## 1. 任务定义
 
@@ -113,17 +123,31 @@ T-NAV-1 是 T1 的 100× 扩展放大版,样本量大后 CoT 激活率的真实�
 
 ## 7. 通过/失败判定
 
-**FAIL**。原因:
-1. acc = 48% < target 90% (差距 42pp)。
-2. 失败主要由 prompt 工程问题 (CoT 未稳定激活) 而非模型能力不足造成 → 需要先修复 prompt 后再重测,**不能直接判定 SmolLM3 不行**。
+### v0 (no /think): **FAIL** acc = 48% < target 90%
+
+### v1 (/think injected,2026-05-17 16:30 重跑): **STILL FAIL** acc = 52.0%
+
+| 指标 | v0 (no /think) | v1 (/think + 1024 tokens) |
+|---|---:|---:|
+| 整体 accuracy | 48.0% | **52.0%** |
+| CoT activation 率 | 11/100 | 11/100(没变化!) |
+| CoT 激活时 accuracy | 54.5% | **90.9%** ✅ |
+| 非激活时 accuracy | 47.2% | 47.2% |
+| total wall | 511.4s | 555.3s |
+
+**关键发现**:
+- `/think` system flag **没有提升 CoT activation 率**(仍 11/100),仅在已激活情况下让 CoT chain 不被 1024 token 限制截断,把激活 acc 从 54.5% → **90.9%**(只要思考就基本对)。
+- 整体 acc 仅 +4pp 是因为大头(89/100)的"短路径不思考"分支没变。
+- **真问题**: SmolLM3 在 T-NAV-1 这种"看起来简单"的题上自己决定不启动 `<think>` chain → 拿短路径输出 47% 的猜。
 
 ## 8. 跟进项
 
 | 优先级 | 行动 | 验证目标 |
 |---|---|---|
-| P0 | 修 `scripts/bench_subtask.py:generate()` 显式注入 `/think` for cot mode | T-NAV-1 重测,accuracy 应 ≥ 75% |
-| P0 | 等 4 个剩余子任务 (T-NAV-2 / 3 / SEL-1 / GOAL) batch 完成,看是否同样症状 | `outputs/bench_subtask_batch_v0.log` |
-| P1 | 若修复后仍 < 90%,考虑 (a) 升级到 SmolLM3 7B (b) prompt 加 few-shot 示例 | - |
+| ~~P0~~ ✅ done | 修 `/think` 注入 | 部分缓解 (CoT-when-fired 54.5%→90.9%) |
+| P0 | **在 user prompt 前缀加 "Let's think step by step." 强制 CoT** | T-NAV-1 acc 应 ≥ 85%(已经证明 CoT 链 90.9% 准) |
+| P1 | 试 `tokenizer.apply_chat_template(messages, enable_thinking=True)` 看是否能强制激活 | 如比 user prompt 干净,优先 |
+| P2 | 升级到 SmolLM3-7B 或 Qwen2.5-7B 看 base CoT 激活率 | - |
 
 ## 文件清单
 

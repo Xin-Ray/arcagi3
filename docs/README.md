@@ -2,7 +2,7 @@
 
 > 10 分钟看完知道现状。状态码 🟢 当前活、🟡 参考、⚫ 历史。
 
-最近更新: 2026-05-17 16:30(T-NAV-1 验证完成 + /think 注入 bug 修复)
+最近更新: 2026-05-17 17:50(5 个 subtask 验证完成: 1 PASS / 4 FAIL,T-GOAL 30% 是 0 通关疑似根因)
 
 > **昨晚跨分支汇报**: [`tonight_summary.md`](./tonight_summary.md) + [`figures/tonight_summary.png`](./figures/tonight_summary.png)
 
@@ -36,7 +36,7 @@
 |---|---|---|---|
 | `main` | 🟢 主线 | `e07e7d1` (2026-05-16) | v3.2 + mask + Knowledge + click_targets。**没有任何 push/merge 发生**;所有新工作都在 feature 分支 |
 | `feat-2026-05-16-v0-action_proposer` | 🟢 **活跃** | (本分支)`b29mzqh3m` 跑中 | 包含 action_proposer + model_bench + SmolLM3 5×2×300 + CoT 1×2×100 跑中 |
-| `feat-2026-05-17-v0-subtask-T-NAV-1` | 🟢 **当前** | `b9e2e87` (2026-05-17) | T-NAV-1 100 probes 完成,48% FAIL(/think 未注入);修 bug 重跑中 (`bs2hz6jxz`,5 subtasks × 100 probes) |
+| `feat-2026-05-17-v0-subtask-T-NAV-1` | 🟢 **当前** | `8f1d314` (2026-05-17) | **5 subtask 全跑完**: T-NAV-1 52%, T-NAV-2 **95% ✅**, T-NAV-3 67%, T-SEL-1 78%, T-GOAL 30%。详见 `docs/project/2026-05-17-v0-subtask_decomp/report.md` |
 | `docs-reorg` | 🟡 等合 | `181d0b6` (2026-05-16) | 文档体系迁移,昨天写完 |
 | `feat-2026-05-16-v01-predictor` | ❌ 不合 | `722db78` (2026-05-16) | CNN OOD AUC 0.16 失败结论存档 |
 | `feat-2026-05-16-v0-grpo_train` | ⏳ Phase 0 | `11ed21f` (2026-05-16) | rollout_wrapper + 10 unit tests pass。真训练未跑 |
@@ -58,6 +58,16 @@
 ---
 
 ## 4. 验证结果汇总
+
+### 🔑 关键新发现 (2026-05-17 17:50)
+
+| 发现 | 来源 |
+|---|---|
+| **T-NAV-2 (多步同方向) 95% PASS** —— 唯一通过的 subtask,CoT 100% 激活 | subtask-T-NAV-2 |
+| **T-GOAL (识别 goal 达成) 30% 严重 FAIL** —— CoT 0% 激活,几乎随机 | subtask-T-GOAL |
+| **0/5 通关的强候选根因 = T-GOAL** —— change_rate 64% 但 reflection 认不出 win state | subtask_decomp |
+| **CoT 激活率 vs accuracy 高度相关** —— Pearson 接近 1,activation 才是 Pass/Fail 决定因素 | subtask_decomp |
+| **`/think` system flag 只能让已激活的 CoT 不截断,不能强制激活** | subtask-T-NAV-1 |
 
 ### ✅ 已验证有用(保留)
 
@@ -87,6 +97,10 @@
 | **SmolLM3 `/no_think` 模式 spatial 推理** | bench 55.2% **完全等于 Qwen baseline** —— CoT 的 17pp 优势消失 | model_bench (2026-05-17) |
 | **任何 backbone 单换都解决通关** | SmolLM3 5×2×300 mean 64% change_rate 但 **0 levels won 全 5 game** | model_bench (2026-05-17) |
 | **T-NAV-1 单步方向选择 / SmolLM3 CoT(无 `/think` 注入)** | 48.0%(目标 ≥ 90%);只 11/100 真激活 CoT,其余短路径 | subtask-T-NAV-1 (2026-05-17) |
+| **T-NAV-1 v1 (/think 注入)** | 52% —— 整体没改善;activation 仍 11/100,但激活的 90.9% | subtask-T-NAV-1 (2026-05-17) |
+| **T-NAV-3 L 型路径** | 67% FAIL;CoT 1/100 激活 → 模型短路径不算 delta | subtask-T-NAV-3 (2026-05-17) |
+| **T-SEL-1 ACTION6 click hit-test** | 78% FAIL(-12pp,接近);(x,y) vs (row,col) 约定混淆 | subtask-T-SEL-1 (2026-05-17) |
+| **T-GOAL YES/NO 目标判定** | **30% SEVERE FAIL**(-60pp);CoT 0% 激活,4 选 1 → 字母模式 | subtask-T-GOAL (2026-05-17) |
 
 ### ⚠️ 部分有用 / 待补充验证
 
@@ -129,8 +143,12 @@ docs/
     ├── 2026-05-16-v0-v2_canary_ablation/
     ├── 2026-05-16-v0-action_proposer/        K=3 propose + N 选 1
     ├── 2026-05-17-v0-model_bench/            3 model bench + SmolLM3 5×2×300 + /no_think 发现
-    ├── 2026-05-17-v0-subtask_decomp/         7 subtask DAG 总设计
-    └── 2026-05-17-v0-subtask-T-NAV-1/        🆕 单步方向 verify(48% FAIL,/think 修中)
+    ├── 2026-05-17-v0-subtask_decomp/         7 subtask DAG + cross-summary 报告
+    ├── 2026-05-17-v0-subtask-T-NAV-1/        单步方向 verify(v0 48% / v1 52%,FAIL)
+    ├── 2026-05-17-v0-subtask-T-NAV-2/        🆕 多步同方向(95% **PASS**)
+    ├── 2026-05-17-v0-subtask-T-NAV-3/        🆕 L 型路径(67% FAIL)
+    ├── 2026-05-17-v0-subtask-T-SEL-1/        🆕 ACTION6 click(78% FAIL, borderline)
+    └── 2026-05-17-v0-subtask-T-GOAL/         🆕 YES/NO 目标(30% SEVERE FAIL,疑似 0 通关根因)
 ```
 
 ---
@@ -139,15 +157,28 @@ docs/
 
 ---
 
-### 2026-05-17 16:30 — 🟢 subtask-T-NAV-1 v0 — `docs/project/2026-05-17-v0-subtask-T-NAV-1/`
+### 2026-05-17 17:50 — 🟢 5 subtask 验证完成 — `docs/project/2026-05-17-v0-subtask_decomp/`
 
 - **分支**: `feat-2026-05-17-v0-subtask-T-NAV-1`(当前)
-- **关键 commits**: `b9e2e87`(batch runner)
-- **一句话**: T-NAV-1 (单步方向) 100 probes SmolLM3 CoT = **48.0% FAIL** (目标 ≥90%)。根因: `bench_subtask.py:generate()` 对 `cot` 模式**没注入 `/think`**,导致 89/100 probe 短路径不思考;已修,batch 重跑 5 个 subtask 中
+- **关键 commits**: `8f1d314`(T-NAV-1 + /think fix)+ 本次写 5 个 report + cross-summary
+- **一句话**: 5 subtask × 100 probe SmolLM3-CoT 实跑。**T-NAV-2 95% PASS** 是唯一通过的;**T-GOAL 30% SEVERE FAIL** 是 0 通关疑似根因。CoT activation 率(0-100% 因任务而异)= Pass/Fail 决定因素。`/think` flag 不能强制激活,只能避免截断已激活的 chain
+- **结果一览**:
+
+  | Subtask | acc | CoT activation | 判定 |
+  |---|---:|---:|---|
+  | T-NAV-1 单步方向 | 52.0% | 11/100 | FAIL |
+  | T-NAV-2 多步同方向 | **95.0%** | **100/100** | ✅ PASS |
+  | T-NAV-3 L 型双段 | 67.0% | 1/100 | FAIL |
+  | T-SEL-1 ACTION6 click | 78.0% | 86/100 | FAIL (borderline) |
+  | T-GOAL YES/NO 目标 | **30.0%** | **0/100** | SEVERE FAIL |
+
 - **关键 outputs**:
-  - `outputs/subtask_T-NAV-1_20260517-161834/`(metrics + per_probe + summary)
-  - `outputs/bench_subtask_T-NAV-1_v2.log`(运行日志)
-  - `outputs/bench_subtask_batch_v1_think.log`(/think 修复版重跑,跑中)
+  - `outputs/subtask_batch_20260517-163018/`(跨 subtask 汇总,主入口)
+  - `outputs/subtask_T-{NAV-1,NAV-2,NAV-3,SEL-1,GOAL}_20260517-163018/` × 5(每个 subtask metrics + per_probe + summary)
+  - `outputs/subtask_T-NAV-1_20260517-161834/`(v0 baseline,无 /think)
+  - `outputs/bench_subtask_batch_v1_think.log`(batch 运行日志)
+  - `outputs/bench_subtask_T-NAV-1_v2.log`(v0 运行日志)
+- **下一步**: P0 - 在 user prompt 加 "Let's solve step by step" 强制 CoT;P1 - 把 production T-GOAL 改成 deterministic Python(不让 LLM 做 goal recognition)
 
 ---
 

@@ -338,9 +338,43 @@ CLI: `scripts/run_v3_multi_round.py --reasoning-mode {auto,cot,no_think}`(2026-0
 
 🟢 [[subtask probe]] 之一: **单步方向选择**。给定 `(r1,c1) → (r2,c2)`,target 共行或共列,delta ∈ ±[1..6]。4 选 1 from {ACTION1=UP, ACTION2=DOWN, ACTION3=LEFT, ACTION4=RIGHT}。
 
-**实测**: SmolLM3 CoT 无 `/think`: **48% FAIL**(只 11/100 真激活 CoT);修 `/think` 后重测中。
+**实测**: SmolLM3 CoT 无 `/think`: 48%;有 `/think` + 1024 tokens: **52% FAIL**。CoT 激活率仅 11/100;激活时 90.9%,未激活 47.2%。
 
 **出处**: `arc_agent/subtask_probes/__init__.py:gen_T_NAV_1`、[`project/2026-05-17-v0-subtask-T-NAV-1/report.md`](./project/2026-05-17-v0-subtask-T-NAV-1/report.md)。
+
+### `T-NAV-2`
+
+🟢 [[subtask probe]] 之一: **多步同方向计数**。给 object + target 共行或共列,distance n ∈ [2..10],已知 action,问几次。4 选 1: 正确 n times + 3 个 distractor。
+
+**实测**: SmolLM3 CoT **95.0% PASS** ✅(唯一通过 90% 阈值的 subtask)。CoT 激活率 100/100 —— "数字计算"题目格式 forces 模型用 token 写出过程,无法短路。
+
+**出处**: `arc_agent/subtask_probes/__init__.py:gen_T_NAV_2`、[`project/2026-05-17-v0-subtask-T-NAV-2/report.md`](./project/2026-05-17-v0-subtask-T-NAV-2/report.md)。
+
+### `T-NAV-3`
+
+🟢 [[subtask probe]] 之一: **L 型双段路径**。给定 `Δrow ≠ 0` 且 `Δcol ≠ 0` 的两点,4 选 1: 正确组合 vs 只走单轴 vs off-by-one。
+
+**实测**: SmolLM3 CoT **67% FAIL**。CoT 仅 1/100 激活,67% 主要靠 "排除明显错的单轴选项" 拿分,不是真推理。
+
+**出处**: `arc_agent/subtask_probes/__init__.py:gen_T_NAV_3`、[`project/2026-05-17-v0-subtask-T-NAV-3/report.md`](./project/2026-05-17-v0-subtask-T-NAV-3/report.md)。
+
+### `T-SEL-1`
+
+🟢 [[subtask probe]] 之一: **ACTION6 click bbox 击中**。4 个 object 各有 bbox,要选哪个 `ACTION6 x=N y=M` 在 target bbox 内。
+
+**实测**: SmolLM3 CoT **78% FAIL**(借助 86/100 CoT 激活)。错误集中在 (x,y) vs (row,col) 约定混淆 + 边界 off-by-one。**5 个 subtask 里离 PASS 最近的一个,prompt 改写有希望推过**。
+
+**出处**: `arc_agent/subtask_probes/__init__.py:gen_T_SEL_1`、[`project/2026-05-17-v0-subtask-T-SEL-1/report.md`](./project/2026-05-17-v0-subtask-T-SEL-1/report.md)。
+
+### `T-GOAL`
+
+🟢 [[subtask probe]] 之一: **判定 goal 是否达成 (YES/NO)**。题面给 goal_hypothesis ("align two yellow squares vertically in left column") + 两个 object 当前位置,4 选 1 YES/NO + 原因。
+
+**实测**: SmolLM3 CoT **30% SEVERE FAIL**(-60pp,几乎随机)。CoT 激活率 **0/100** —— 模型把它当 multiple-choice 模式识别题。**疑似 0/5 通关的根因**:reflection agent 也在做这件事,认不出 win state → 不触发 win。
+
+**Production fix**: 把 goal-check 从 LLM 移到 deterministic Python(读 hypothesis + obj 位置做坐标判断)。
+
+**出处**: `arc_agent/subtask_probes/__init__.py:gen_T_GOAL`、[`project/2026-05-17-v0-subtask-T-GOAL/report.md`](./project/2026-05-17-v0-subtask-T-GOAL/report.md)、[`project/2026-05-17-v0-subtask_decomp/report.md`](./project/2026-05-17-v0-subtask_decomp/report.md) §6。
 
 ### `R1..R7` (hard rules)
 
