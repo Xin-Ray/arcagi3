@@ -2,7 +2,7 @@
 
 > 10 分钟看完知道现状。状态码 🟢 当前活、🟡 参考、⚫ 历史。
 
-最近更新: 2026-05-17 17:50(5 个 subtask 验证完成: 1 PASS / 4 FAIL,T-GOAL 30% 是 0 通关疑似根因)
+最近更新: 2026-05-18 02:00(force_cot A/B 完: T-NAV-3 +30pp PASS,T-GOAL long_acc 33.7% 证伪 LLM 可做 goal recognition)
 
 > **昨晚跨分支汇报**: [`tonight_summary.md`](./tonight_summary.md) + [`figures/tonight_summary.png`](./figures/tonight_summary.png)
 
@@ -36,7 +36,8 @@
 |---|---|---|---|
 | `main` | 🟢 主线 | `e07e7d1` (2026-05-16) | v3.2 + mask + Knowledge + click_targets。**没有任何 push/merge 发生**;所有新工作都在 feature 分支 |
 | `feat-2026-05-16-v0-action_proposer` | 🟢 **活跃** | (本分支)`b29mzqh3m` 跑中 | 包含 action_proposer + model_bench + SmolLM3 5×2×300 + CoT 1×2×100 跑中 |
-| `feat-2026-05-17-v0-subtask-T-NAV-1` | 🟢 **当前** | `8f1d314` (2026-05-17) | **5 subtask 全跑完**: T-NAV-1 52%, T-NAV-2 **95% ✅**, T-NAV-3 67%, T-SEL-1 78%, T-GOAL 30%。详见 `docs/project/2026-05-17-v0-subtask_decomp/report.md` |
+| `feat-2026-05-17-v0-subtask-T-NAV-1` | 🟢 **当前** | (本次 commit) | 5 subtask 验证 + force_cot A/B 全跑完。终判 2 PASS / 3 FAIL。详见 `docs/project/2026-05-18-v0-force_cot/report.md` §7 |
+| `feat-2026-05-18-v0-det_goal_plus_force_cot` | ⏳ 待建 | - | 下一步:Reflection goal-check 走 deterministic + Action prompt 加 force_cot |
 | `docs-reorg` | 🟡 等合 | `181d0b6` (2026-05-16) | 文档体系迁移,昨天写完 |
 | `feat-2026-05-16-v01-predictor` | ❌ 不合 | `722db78` (2026-05-16) | CNN OOD AUC 0.16 失败结论存档 |
 | `feat-2026-05-16-v0-grpo_train` | ⏳ Phase 0 | `11ed21f` (2026-05-16) | rollout_wrapper + 10 unit tests pass。真训练未跑 |
@@ -59,11 +60,21 @@
 
 ## 4. 验证结果汇总
 
-### 🔑 关键新发现 (2026-05-17 17:50)
+### 🔑 关键新发现 (2026-05-18 02:00)
 
 | 发现 | 来源 |
 |---|---|
-| **T-NAV-2 (多步同方向) 95% PASS** —— 唯一通过的 subtask,CoT 100% 激活 | subtask-T-NAV-2 |
+| **force_cot prompt 让激活率从 0-100% 不稳定 → 56-100% 稳定** | force_cot (2026-05-18) |
+| **T-NAV-3 67% → 97% (+30pp PASS)** —— prompt 单 fix 直接转 PASS | force_cot |
+| **T-GOAL long_acc = 33.7%** —— 即使 98/100 激活 CoT,模型也答不对,**任务超出 SmolLM3-3B 能力**,prompt 救不了 | force_cot |
+| **T-SEL-1 force_cot **倒退** 78% → 70%** —— force_cot 不是 free lunch,长 CoT 干扰坐标比较 | force_cot |
+| **架构含义**: Reflection 的 goal-check 必须 deterministic Python;Action Agent 可受益于 force_cot | force_cot §5 |
+
+### 🔑 早前发现 (2026-05-17 17:50)
+
+| 发现 | 来源 |
+|---|---|
+| **T-NAV-2 (多步同方向) 95% PASS** —— CoT 100% 激活 | subtask-T-NAV-2 |
 | **T-GOAL (识别 goal 达成) 30% 严重 FAIL** —— CoT 0% 激活,几乎随机 | subtask-T-GOAL |
 | **0/5 通关的强候选根因 = T-GOAL** —— change_rate 64% 但 reflection 认不出 win state | subtask_decomp |
 | **CoT 激活率 vs accuracy 高度相关** —— Pearson 接近 1,activation 才是 Pass/Fail 决定因素 | subtask_decomp |
@@ -101,6 +112,8 @@
 | **T-NAV-3 L 型路径** | 67% FAIL;CoT 1/100 激活 → 模型短路径不算 delta | subtask-T-NAV-3 (2026-05-17) |
 | **T-SEL-1 ACTION6 click hit-test** | 78% FAIL(-12pp,接近);(x,y) vs (row,col) 约定混淆 | subtask-T-SEL-1 (2026-05-17) |
 | **T-GOAL YES/NO 目标判定** | **30% SEVERE FAIL**(-60pp);CoT 0% 激活,4 选 1 → 字母模式 | subtask-T-GOAL (2026-05-17) |
+| **force_cot user prompt 路线** | T-NAV-3 67→97 PASS,T-GOAL 30→35 (long_acc 33.7% near-random),T-SEL-1 78→70 倒退 | force_cot A/B (2026-05-18) |
+| **LLM 单做 T-GOAL 的极限** | force_cot 让 98/100 真激活 CoT,long_acc 仍 33.7% → SmolLM3-3B 本身做不了 goal recognition | force_cot §4.2 |
 
 ### ⚠️ 部分有用 / 待补充验证
 
@@ -147,13 +160,38 @@ docs/
     ├── 2026-05-17-v0-subtask-T-NAV-1/        单步方向 verify(v0 48% / v1 52%,FAIL)
     ├── 2026-05-17-v0-subtask-T-NAV-2/        🆕 多步同方向(95% **PASS**)
     ├── 2026-05-17-v0-subtask-T-NAV-3/        🆕 L 型路径(67% FAIL)
-    ├── 2026-05-17-v0-subtask-T-SEL-1/        🆕 ACTION6 click(78% FAIL, borderline)
-    └── 2026-05-17-v0-subtask-T-GOAL/         🆕 YES/NO 目标(30% SEVERE FAIL,疑似 0 通关根因)
+    ├── 2026-05-17-v0-subtask-T-SEL-1/        ACTION6 click(78% FAIL, borderline)
+    ├── 2026-05-17-v0-subtask-T-GOAL/         YES/NO 目标(30% SEVERE FAIL,疑似 0 通关根因)
+    └── 2026-05-18-v0-force_cot/              🆕 force_cot A/B(T-NAV-3 PASS,T-GOAL long_acc 证伪 LLM)
 ```
 
 ---
 
 ## 6. 版本历史(最新在上)
+
+---
+
+### 2026-05-18 02:00 — 🟢 force_cot A/B — `docs/project/2026-05-18-v0-force_cot/`
+
+- **分支**: `feat-2026-05-17-v0-subtask-T-NAV-1`(复用)
+- **关键 commits**: `01fc61b`(`--prompt-style` flag)→ `644e604`(决策树)→ 本次 commit(报告 + sync)
+- **一句话**: 同 5 subtask × 100 probe,只换 user prompt 加 step-by-step → T-NAV-3 67→**97% PASS** (+30pp);T-GOAL 30→35 但 long_acc 33.7% **证伪 LLM 能做 goal recognition**;T-SEL-1 78→70 **倒退**
+- **结果**:
+
+  | Subtask | Default | force_cot | Δ | 终判 |
+  |---|---:|---:|---:|---|
+  | T-NAV-1 | 52% | 71% | +19pp | FAIL |
+  | T-NAV-2 | **95% PASS** | 93% | -2pp | PASS |
+  | T-NAV-3 | 67% | **97%** | **+30pp** | **PASS** ✅ |
+  | T-SEL-1 | 78% | 70% | -8pp | WORSE |
+  | T-GOAL | 30% | 35% | +5pp | SEVERE FAIL |
+
+- **关键 outputs**:
+  - `outputs/subtask_batch_20260518-000721/`(跨 subtask 汇总,主入口)
+  - `outputs/subtask_T-{NAV-1,NAV-2,NAV-3,SEL-1,GOAL}_20260518-000721/` × 5
+  - `outputs/bench_subtask_batch_v2_forcecot.log`
+- **架构含义**: Reflection goal-check 必须迁 deterministic Python(LLM 能力到顶);Action Agent prompt 可加 force_cot;不能一刀切
+- **下一步**: 在新分支 `feat-2026-05-18-v0-det_goal_plus_force_cot` 实现 `goal_evaluator.py` + 加 Action force_cot,跑 ar25 1×2×100
 
 ---
 

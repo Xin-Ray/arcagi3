@@ -458,47 +458,83 @@ CLI: `scripts/run_v3_multi_round.py --reasoning-mode {auto,cot,no_think}`(2026-0
 **出处**: [`project/2026-05-17-v0-subtask_decomp/architecture.md`](./project/2026-05-17-v0-subtask_decomp/architecture.md)、`arc_agent/subtask_probes/__init__.py`、`scripts/bench_subtask.py` / `bench_subtask_batch.py`。
 **相关**: [[spatial probe]]、[[/think]]、[[T-NAV-1]]、[[T-NAV-2]]、[[T-NAV-3]]、[[T-SEL-1]]、[[T-GOAL]]。
 
+### `force_cot`
+
+🟢 user-prompt 工程手段:在题目末尾换 "Solve step by step. First write down values, then check each option. End with Answer: X"。配合 [[/think]] 把 [[CoT 激活率]] 推到 56-100%(原本 0-100% 任性分布)。
+
+**实测 A/B (2026-05-18,SmolLM3-3B 同 seed)**:
+
+| Subtask | default | force_cot | Δ |
+|---|---:|---:|---:|
+| T-NAV-3 | 67% | **97%** | **+30pp ✅ PASS 转化** |
+| T-NAV-1 | 52% | 71% | +19pp(仍 FAIL)|
+| T-NAV-2 | 95% | 93% | -2pp(噪声)|
+| T-GOAL | 30% | 35% | +5pp(long_acc 33.7%,LLM 做不了)|
+| T-SEL-1 | 78% | **70%** | **-8pp ⚠️ 倒退** |
+
+**结论**: 不是 free lunch。**对推理类 (T-NAV-3) 大赢,对模式识别类 (T-GOAL) 救不动,对坐标对比类 (T-SEL-1) 反而干扰**。production 改架构时需要按任务类型选择性应用。
+
+**实现**: `scripts/bench_subtask.py:format_probe(prompt_style="force_cot")`,commit `01fc61b`。
+
+**出处**: [`project/2026-05-18-v0-force_cot/report.md`](./project/2026-05-18-v0-force_cot/report.md)。
+**相关**: [[CoT 激活率]]、[[/think]]、[[long_acc / short_acc]]、[[短路径]]、[[subtask probe]]。
+
 ### `T-NAV-1`
 
 🟢 [[subtask probe]] 之一: **单步方向选择**。给定 `(r1,c1) → (r2,c2)`,target 共行或共列,delta ∈ ±[1..6]。4 选 1 from {ACTION1=UP, ACTION2=DOWN, ACTION3=LEFT, ACTION4=RIGHT}。
 
-**实测**: SmolLM3 CoT 无 `/think`: 48%;有 `/think` + 1024 tokens: **52% FAIL**。CoT 激活率仅 11/100;激活时 90.9%,未激活 47.2%。
+**实测**:
+- SmolLM3 default (无 `/think`): 48%
+- SmolLM3 default + `/think` + 1024 tokens: **52% FAIL**,激活率 11/100,long_acc 90.9%
+- SmolLM3 [[force_cot]] + `/think`: **71% FAIL**,激活率 100/100,long_acc 71.0% → **即使全 CoT 模型也破不了 80%**,letter-shuffle attention 是真瓶颈
 
-**出处**: `arc_agent/subtask_probes/__init__.py:gen_T_NAV_1`、[`project/2026-05-17-v0-subtask-T-NAV-1/report.md`](./project/2026-05-17-v0-subtask-T-NAV-1/report.md)。
+**出处**: `arc_agent/subtask_probes/__init__.py:gen_T_NAV_1`、[`project/2026-05-17-v0-subtask-T-NAV-1/report.md`](./project/2026-05-17-v0-subtask-T-NAV-1/report.md)、[`project/2026-05-18-v0-force_cot/report.md`](./project/2026-05-18-v0-force_cot/report.md)。
 
 ### `T-NAV-2`
 
 🟢 [[subtask probe]] 之一: **多步同方向计数**。给 object + target 共行或共列,distance n ∈ [2..10],已知 action,问几次。4 选 1: 正确 n times + 3 个 distractor。
 
-**实测**: SmolLM3 CoT **95.0% PASS** ✅(唯一通过 90% 阈值的 subtask)。CoT 激活率 100/100 —— "数字计算"题目格式 forces 模型用 token 写出过程,无法短路。
+**实测**:
+- SmolLM3 default: **95.0% PASS** ✅,CoT 激活率 100/100
+- SmolLM3 [[force_cot]]: 93%(短链 91/100 反而拿到 97.8%,长链 9/100 只有 44.4%)→ **数数任务不需要 CoT,反而干扰**
 
-**出处**: `arc_agent/subtask_probes/__init__.py:gen_T_NAV_2`、[`project/2026-05-17-v0-subtask-T-NAV-2/report.md`](./project/2026-05-17-v0-subtask-T-NAV-2/report.md)。
+**出处**: `arc_agent/subtask_probes/__init__.py:gen_T_NAV_2`、[`project/2026-05-17-v0-subtask-T-NAV-2/report.md`](./project/2026-05-17-v0-subtask-T-NAV-2/report.md)、[`project/2026-05-18-v0-force_cot/report.md`](./project/2026-05-18-v0-force_cot/report.md)。
 
 ### `T-NAV-3`
 
 🟢 [[subtask probe]] 之一: **L 型双段路径**。给定 `Δrow ≠ 0` 且 `Δcol ≠ 0` 的两点,4 选 1: 正确组合 vs 只走单轴 vs off-by-one。
 
-**实测**: SmolLM3 CoT **67% FAIL**。CoT 仅 1/100 激活,67% 主要靠 "排除明显错的单轴选项" 拿分,不是真推理。
+**实测**:
+- SmolLM3 default: 67% FAIL,激活率 1/100
+- SmolLM3 [[force_cot]]: **97.0% PASS** ✅ **+30pp**,激活率 56/100,long_acc 96.4% → **force_cot 路线最有说服力的胜利**
 
-**出处**: `arc_agent/subtask_probes/__init__.py:gen_T_NAV_3`、[`project/2026-05-17-v0-subtask-T-NAV-3/report.md`](./project/2026-05-17-v0-subtask-T-NAV-3/report.md)。
+**出处**: `arc_agent/subtask_probes/__init__.py:gen_T_NAV_3`、[`project/2026-05-17-v0-subtask-T-NAV-3/report.md`](./project/2026-05-17-v0-subtask-T-NAV-3/report.md)、[`project/2026-05-18-v0-force_cot/report.md`](./project/2026-05-18-v0-force_cot/report.md)。
 
 ### `T-SEL-1`
 
 🟢 [[subtask probe]] 之一: **ACTION6 click bbox 击中**。4 个 object 各有 bbox,要选哪个 `ACTION6 x=N y=M` 在 target bbox 内。
 
-**实测**: SmolLM3 CoT **78% FAIL**(借助 86/100 CoT 激活)。错误集中在 (x,y) vs (row,col) 约定混淆 + 边界 off-by-one。**5 个 subtask 里离 PASS 最近的一个,prompt 改写有希望推过**。
+**实测**:
+- SmolLM3 default: 78% FAIL,激活率 86/100
+- SmolLM3 [[force_cot]]: **70% FAIL ⚠️ -8pp 倒退**,激活率 100/100,long_acc 70% → **CoT 链反而 distract 模型在坐标对比上**。force_cot 不适用此类任务
 
-**出处**: `arc_agent/subtask_probes/__init__.py:gen_T_SEL_1`、[`project/2026-05-17-v0-subtask-T-SEL-1/report.md`](./project/2026-05-17-v0-subtask-T-SEL-1/report.md)。
+**P1 P fix**: 把题面 `(x, y)` 跟选项 `x=N y=M` 都改成 `(row, col)` / `row=R col=C`,消除约定混淆。
+
+**出处**: `arc_agent/subtask_probes/__init__.py:gen_T_SEL_1`、[`project/2026-05-17-v0-subtask-T-SEL-1/report.md`](./project/2026-05-17-v0-subtask-T-SEL-1/report.md)、[`project/2026-05-18-v0-force_cot/report.md`](./project/2026-05-18-v0-force_cot/report.md)。
 
 ### `T-GOAL`
 
 🟢 [[subtask probe]] 之一: **判定 goal 是否达成 (YES/NO)**。题面给 goal_hypothesis ("align two yellow squares vertically in left column") + 两个 object 当前位置,4 选 1 YES/NO + 原因。
 
-**实测**: SmolLM3 CoT **30% SEVERE FAIL**(-60pp,几乎随机)。CoT 激活率 **0/100** —— 模型把它当 multiple-choice 模式识别题。**疑似 0/5 通关的根因**:reflection agent 也在做这件事,认不出 win state → 不触发 win。
+**实测**:
+- SmolLM3 default: 30% SEVERE FAIL,激活率 0/100
+- SmolLM3 [[force_cot]]: **35% 仍 SEVERE FAIL**,激活率 **98/100**,**long_acc 33.7%** → **激活了 CoT 仍然 near-random**,LLM 本身做不了 goal recognition
 
-**Production fix**: 把 goal-check 从 LLM 移到 deterministic Python(读 hypothesis + obj 位置做坐标判断)。
+**架构含义** (决定性证据): 不管怎么改 prompt,LLM 都答不对 T-GOAL → **必须** 把 goal-check 移到 deterministic Python (读 hypothesis + obj 坐标做断言)。
 
-**出处**: `arc_agent/subtask_probes/__init__.py:gen_T_GOAL`、[`project/2026-05-17-v0-subtask-T-GOAL/report.md`](./project/2026-05-17-v0-subtask-T-GOAL/report.md)、[`project/2026-05-17-v0-subtask_decomp/report.md`](./project/2026-05-17-v0-subtask_decomp/report.md) §6。
+**疑似 0/5 通关的根因**: reflection agent 实际在做 T-GOAL,**它认不出 win state → 不触发 win**。
+
+**出处**: `arc_agent/subtask_probes/__init__.py:gen_T_GOAL`、[`project/2026-05-17-v0-subtask-T-GOAL/report.md`](./project/2026-05-17-v0-subtask-T-GOAL/report.md)、[`project/2026-05-18-v0-force_cot/report.md`](./project/2026-05-18-v0-force_cot/report.md) §4.2。
 
 ### `R1..R7` (hard rules)
 
