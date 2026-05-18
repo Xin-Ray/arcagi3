@@ -72,13 +72,29 @@ def parse_answer(text: str) -> Optional[str]:
     return None
 
 
-def format_probe(probe: dict) -> str:
+def format_probe(probe: dict, prompt_style: str = "default") -> str:
+    """Build user prompt for one probe.
+
+    prompt_style:
+      - "default": just question + options + 'Answer with one letter'.
+      - "force_cot": prepend explicit step-by-step instruction designed
+        to lift CoT activation rate (see GLOSSARY 'CoT 激活率').
+        Tested 2026-05-18 to validate the P0 hypothesis from the
+        5-subtask verification run.
+    """
     lines = [probe["q"], ""]
     for k in ["A", "B", "C", "D"]:
         if k in probe["options"]:
             lines.append(f"{k}) {probe['options'][k]}")
     lines.append("")
-    lines.append("Answer with one letter (A, B, C, or D).")
+    if prompt_style == "force_cot":
+        lines.append(
+            "Solve this step by step. First, write down the relevant "
+            "values from the question (positions, distances, conditions). "
+            "Then check each option. Finally end your reply with: Answer: X"
+        )
+    else:
+        lines.append("Answer with one letter (A, B, C, or D).")
     return "\n".join(lines)
 
 
@@ -150,10 +166,12 @@ def generate(model, tokenizer, system: str, user: str, entry: dict,
     return tokenizer.decode(gen_ids, skip_special_tokens=True)
 
 
-def run_one_model(model_key: str, probes: list[dict], max_new_tokens: int) -> dict:
+def run_one_model(model_key: str, probes: list[dict], max_new_tokens: int,
+                  prompt_style: str = "default") -> dict:
     entry = MODEL_REGISTRY[model_key]
     print(f"\n=== {entry['label']} ({entry['hf_id']}) "
-          f"reasoning={entry['reasoning_mode']} ===", flush=True)
+          f"reasoning={entry['reasoning_mode']} "
+          f"prompt={prompt_style} ===", flush=True)
     t0 = time.time()
     try:
         model, tokenizer = load_model(entry)
@@ -168,7 +186,8 @@ def run_one_model(model_key: str, probes: list[dict], max_new_tokens: int) -> di
     for i, p in enumerate(probes):
         t = time.time()
         try:
-            raw = generate(model, tokenizer, SYSTEM_PROMPT, format_probe(p),
+            raw = generate(model, tokenizer, SYSTEM_PROMPT,
+                           format_probe(p, prompt_style=prompt_style),
                            entry, max_new_tokens=max_new_tokens)
             elapsed = time.time() - t
         except Exception as e:
@@ -208,6 +227,9 @@ def main():
     parser.add_argument("--n-probes", type=int, default=100)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--max-new-tokens", type=int, default=512)
+    parser.add_argument("--prompt-style", default="default",
+                        choices=["default", "force_cot"],
+                        help="force_cot prepends 'Solve step by step' to user prompt")
     parser.add_argument("--output", default="")
     args = parser.parse_args()
 
@@ -227,7 +249,8 @@ def main():
         if m not in MODEL_REGISTRY:
             print(f"  unknown model key: {m}", flush=True)
             continue
-        r = run_one_model(m, probes, args.max_new_tokens)
+        r = run_one_model(m, probes, args.max_new_tokens,
+                          prompt_style=args.prompt_style)
         all_results.append(r)
         with (out_dir / f"per_probe_{m}.jsonl").open("w", encoding="utf-8") as f:
             for x in r.get("results", []):

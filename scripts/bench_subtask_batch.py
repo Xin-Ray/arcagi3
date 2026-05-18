@@ -31,19 +31,22 @@ from arc_agent.subtask_probes import GENERATORS
 
 def run_subtask(model, tokenizer, entry: dict, subtask: str,
                 n_probes: int, seed: int, max_new_tokens: int,
-                out_root: Path, ts: str) -> dict:
+                out_root: Path, ts: str,
+                prompt_style: str = "default") -> dict:
     """Run probes for one subtask using already-loaded model."""
     probes = GENERATORS[subtask](n=n_probes, seed=seed)
     out_dir = out_root / f"subtask_{subtask}_{ts}"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"\n=== {subtask} ({len(probes)} probes) ===", flush=True)
+    print(f"\n=== {subtask} ({len(probes)} probes) prompt={prompt_style} ===",
+          flush=True)
     t0 = time.time()
     results = []
     for i, p in enumerate(probes):
         t = time.time()
         try:
-            raw = generate(model, tokenizer, SYSTEM_PROMPT, format_probe(p),
+            raw = generate(model, tokenizer, SYSTEM_PROMPT,
+                           format_probe(p, prompt_style=prompt_style),
                            entry, max_new_tokens=max_new_tokens)
             elapsed = time.time() - t
         except Exception as e:
@@ -107,6 +110,9 @@ def main():
     parser.add_argument("--n-probes", type=int, default=100)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--max-new-tokens", type=int, default=512)
+    parser.add_argument("--prompt-style", default="default",
+                        choices=["default", "force_cot"],
+                        help="force_cot prepends 'Solve step by step' to user prompt")
     args = parser.parse_args()
 
     subtasks = [s.strip() for s in args.subtasks.split(",") if s.strip()]
@@ -119,7 +125,8 @@ def main():
     entry = dict(MODEL_REGISTRY[args.model])  # copy
     entry["_key"] = args.model
     print(f"[batch] {len(subtasks)} subtasks × {args.n_probes} probes on "
-          f"{entry['label']} (reasoning={entry['reasoning_mode']})", flush=True)
+          f"{entry['label']} (reasoning={entry['reasoning_mode']}, "
+          f"prompt={args.prompt_style})", flush=True)
 
     print(f"\n=== loading model once ===", flush=True)
     t0 = time.time()
@@ -133,13 +140,14 @@ def main():
     for st in subtasks:
         r = run_subtask(model, tokenizer, entry, st,
                         args.n_probes, args.seed, args.max_new_tokens,
-                        out_root, ts)
+                        out_root, ts, prompt_style=args.prompt_style)
         all_results.append(r)
 
     free_model(model)
 
     # Cross-subtask summary
     cross = {"model": entry["label"], "reasoning": entry["reasoning_mode"],
+             "prompt_style": args.prompt_style,
              "subtasks": all_results}
     cross_dir = out_root / f"subtask_batch_{ts}"
     cross_dir.mkdir(parents=True, exist_ok=True)
