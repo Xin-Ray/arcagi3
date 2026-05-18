@@ -104,9 +104,88 @@ orch_override 也起作用:51/100 + 46/100 步被 R3 forced-explore 等 mask 路
 - 如果 hypothesis 正确,achieved=True but env not WIN → 强降 confidence,逼 Reflection 改 hypothesis
 - 目标: change_rate ≥ 70% (维持 v1) + 至少 1 round 通关 ≥ level 1
 
-## 5. (v2 结果占位 — Monitor 完成后填)
+## 5. v2 round 0 结果 (round 1 用户决定 kill 来转 T-REVISE,不跑完)
 
-_(待 `outputs/det_goal_force_cot_v2_ar25_2x100_<ts>/` 完成)_
+### 5.1 数字
+
+| 指标 | v1 round 0 | v2 round 0 |
+|---|---:|---:|
+| change_rate | **75%** | **47%** |
+| orch_override | 51 | **4** |
+| ACTION1 占比 | 37 | **69** |
+| Reflection 产出 hypothesis | 0/100 | **100/100** ✓ |
+| `goal_pred_kind` 解析成功 | 100/100 None | 100/100 None |
+| `goal_achieved_det` evaluated | 100/100 None | 100/100 None |
+| levels won | 0 | 0 |
+
+### 5.2 反直觉发现: Reflection 工作 → change_rate 反而跌
+
+| 状态 | 谁在主导 | change_rate |
+|---|---|---:|
+| v1: Reflection 截断 | orchestrator R3 / mask 接管 | **75%** |
+| v2: Reflection 正常 | LLM hypothesis driver | 47% |
+
+→ **数据上证明 production 改进的核心来自 orchestrator hard rules,不是 LLM 推理质量**。让 LLM "多说话" 反而把 change_rate 拉下来。
+
+### 5.3 evaluator 100/100 None 的根因
+
+Reflection 实际写的 hypothesis 用的词汇 (v2 round 0 trace):
+
+```
+step  0:  "move red and yellow to the top edge"
+step 15:  "move red and yellow to the left edge"
+step 17:  "align the tan objects #7 and #8"
+step 29:  "tan towards each other to align them"
+step 47:  "tan to the center"
+step 56:  "tan #11 #12 to the center"
+step 60:  "move tan #10 and #11 to the center"
+step 75:  "align the purple objects #6,#7,#8,#9 to the center"
+step 79:  "purple towards the center to align them"
+```
+
+我的 evaluator 解析模式: `col=N` / `column N` / `vertically aligned in left column`...
+
+**没有任何一个 hypothesis 匹配**。production vocabulary 用 "edge" / "center" / "towards each other" / 无轴的 "align",我的 parser 不识别。
+
+→ **goal_evaluator 设计正确但 production 输入分布错了**。要么扩展 parser 模式,要么换 LLM 输出固定 schema。
+
+## 5.4 交叉验证: 5 subtask bench vs production 表现 (重要!)
+
+| Subtask | Bench accuracy (force_cot) | Production 表现 | Δ |
+|---|---:|---:|---:|
+| T-NAV-1 | 71% | **93%** (39/42 direction matches) | **+22pp** production 更好 |
+| T-NAV-2 | 95% | 多 streak (15/6/5),合理 | n/a |
+| T-NAV-3 | 97% | 无直接 production 证据 | n/a |
+| **T-SEL-1** | 70% | **0/5 (0%)** ACTION6 全 no-op | **-70pp catastrophic** |
+| T-GOAL | 35% | 0/100 evaluator 没触发 | n/a |
+| Hypothesis-Action coherence | n/a | 80% (8/10) Action follows hypothesis | n/a |
+
+**两个关键插值发现**:
+
+1. **T-NAV-1 production 反而更好 (93% vs 71% bench)**。原因: bench 用 letter-shuffle 4-选-1 ("A) ACTION3, B) ACTION1, ...") 拖累了模型;production 直接 "pick ACTION1..7" 没干扰。**这意味着 bench 反而比 production 难** — 之前 T-NAV-1 FAIL 可能是 bench 不够 in-distribution。
+
+2. **T-SEL-1 production 崩溃 (0% vs 70% bench)**。原因: bench 给的是 "在 bbox 里点哪",production 给的是 "选哪个 object 点 + 点哪里"。`click_targets` bandit 选的 5 个 target 全是 no-op object,**说明 bandit 的"选哪个"机制本身就错**。bench 没测这一步。
+
+→ **5 个 subtask PASS 不代表 production work**。每个 subtask 的输入分布跟 production 不一致,**最关键的"选哪个 object / 推断 goal target"环节根本没测**。
+
+## 6. v1 vs v2 + 交叉验证 三条都指向同一个结论
+
+1. v1 (R3 主导) > v2 (LLM 主导) on change_rate
+2. T-SEL-1 bench → production: 70% → 0% (selector 是真瓶颈)
+3. T-GOAL bench long_acc 33.7% (LLM 做不了 goal recognition)
+
+**结论**: 之前的 5 subtask 拆分**只覆盖了下游 "given target → execute" 那一段**,**完全没测上游 "from messy frame → hypothesize target / revise on failure" 那一段**。
+
+而 ARC-AGI-3 的本质是 **没有 instruction → 必须先猜目标 → 错了再改**。这个核心循环 (T-DISCOVER + T-REVISE) 我**完全没测过**。
+
+→ **下一个分支不再补 evaluator / prompt 调优,直接测 T-REVISE**。如果 Reflection 根本不会 evidence-driven revise,加再多机制都没用。
+
+## 7. 后续(放弃 v2 round 1,转 T-REVISE)
+
+用户(2026-05-18)看完 v2 round 0 数据后:
+> "我觉得不用跑了,kill 掉,然后测反思的部分吧"
+
+v2 round 1 已 kill;转向 `feat-2026-05-18-v0-revise_bench`。设计见该分支。
 
 ## 6. 不管 v2 结果如何,已确认的发现
 

@@ -458,6 +458,54 @@ CLI: `scripts/run_v3_multi_round.py --reasoning-mode {auto,cot,no_think}`(2026-0
 **出处**: [`project/2026-05-17-v0-subtask_decomp/architecture.md`](./project/2026-05-17-v0-subtask_decomp/architecture.md)、`arc_agent/subtask_probes/__init__.py`、`scripts/bench_subtask.py` / `bench_subtask_batch.py`。
 **相关**: [[spatial probe]]、[[/think]]、[[T-NAV-1]]、[[T-NAV-2]]、[[T-NAV-3]]、[[T-SEL-1]]、[[T-GOAL]]。
 
+### `cross-validation` (subtask 跨验证)
+
+🟢 用 production trace.jsonl 反向验证 [[subtask probe]] 测的能力是否真在 production work。**2026-05-18 首次做,结论是混合的**:
+
+| Subtask | Bench | Production | Δ |
+|---|---:|---:|---:|
+| T-NAV-1 | 71% | **93%** | +22pp 反而更好 |
+| T-NAV-2 | 95% | ~OK(streaks 合理)| - |
+| **T-SEL-1** | 70% | **0%** | **-70pp 崩** |
+| T-GOAL | 35% | 0(evaluator parse=None)| - |
+| Hyp-Action coherence | n/a | 80% | - |
+
+**关键启示**:
+1. bench 高 ≠ production work — T-SEL-1 70% → 0% 的代价
+2. bench 低 ≠ production fail — T-NAV-1 71% bench 但 93% prod
+3. **拆分本身的覆盖**才是真问题:5 subtask 全在测 "given target → execute",**完全没测 "from frame → hypothesize → revise"**
+
+**做法** (`scripts/cross_validate_subtasks.py` 待建): 读 trace.jsonl,逐步重建 "如果 subtask probe 形态,这一步会答对吗",汇总成跨验证表。
+
+**出处**: [`project/2026-05-18-v0-det_goal_plus_force_cot/report.md`](./project/2026-05-18-v0-det_goal_plus_force_cot/report.md) §5.4。
+**相关**: [[subtask probe]]、[[T-NAV-1]]、[[T-SEL-1]]、[[T-REVISE]]、[[T-DISCOVER]]。
+
+### `T-REVISE` (proposed)
+
+🟢 **新 [[subtask probe]]** — 测 Reflection Agent 的核心能力:**根据 outcome 修目标**。
+
+**输入**: (prior hypothesis, last N (action, outcome) pairs)
+**问**: hypothesis 是否被证伪?如果是,新 hypothesis 应该是什么方向?
+
+设计动机: ARC-AGI-3 没有 instruction,**通关靠 trial → reflection → revise**。5 个旧 subtask **没测这一步**。v2 round 0 trace 显示 Reflection 100 步写了 11 个不同 hypothesis,但**没人验证这 11 次 revise 是 evidence-driven 还是随机抖**。
+
+**Status**: 待建 (`feat-2026-05-18-v0-revise_bench` 分支)。
+
+**相关**: [[cross-validation]]、[[T-DISCOVER]]、[[goal_hypothesis]]、[[Reflection Agent]]。
+
+### `T-DISCOVER` (proposed)
+
+🟢 **新 [[subtask probe]]** — 测 Reflection Agent 的首步推理能力:**从单帧 0 prior 生成第一个 hypothesis**。
+
+**输入**: 一帧 + extract 出来的 objects + (legal actions)
+**问**: 写一个合理的 goal_hypothesis,理由要可解释。
+
+跟 [[T-REVISE]] 互补:一个测"猜",一个测"改"。
+
+**Status**: 待建。
+
+**相关**: [[T-REVISE]]、[[Reflection Agent]]、[[goal_hypothesis]]。
+
 ### `force_cot`
 
 🟢 user-prompt 工程手段:在题目末尾换 "Solve step by step. First write down values, then check each option. End with Answer: X"。配合 [[/think]] 把 [[CoT 激活率]] 推到 56-100%(原本 0-100% 任性分布)。

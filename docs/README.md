@@ -2,7 +2,7 @@
 
 > 10 分钟看完知道现状。状态码 🟢 当前活、🟡 参考、⚫ 历史。
 
-最近更新: 2026-05-18 02:00(force_cot A/B 完: T-NAV-3 +30pp PASS,T-GOAL long_acc 33.7% 证伪 LLM 可做 goal recognition)
+最近更新: 2026-05-18 (det_goal_plus_force_cot v2 round 0 跑完 + 交叉验证)
 
 > **昨晚跨分支汇报**: [`tonight_summary.md`](./tonight_summary.md) + [`figures/tonight_summary.png`](./figures/tonight_summary.png)
 
@@ -36,8 +36,9 @@
 |---|---|---|---|
 | `main` | 🟢 主线 | `e07e7d1` (2026-05-16) | v3.2 + mask + Knowledge + click_targets。**没有任何 push/merge 发生**;所有新工作都在 feature 分支 |
 | `feat-2026-05-16-v0-action_proposer` | 🟢 **活跃** | (本分支)`b29mzqh3m` 跑中 | 包含 action_proposer + model_bench + SmolLM3 5×2×300 + CoT 1×2×100 跑中 |
-| `feat-2026-05-17-v0-subtask-T-NAV-1` | 🟢 **当前** | (本次 commit) | 5 subtask 验证 + force_cot A/B 全跑完。终判 2 PASS / 3 FAIL。详见 `docs/project/2026-05-18-v0-force_cot/report.md` §7 |
-| `feat-2026-05-18-v0-det_goal_plus_force_cot` | ⏳ 待建 | - | 下一步:Reflection goal-check 走 deterministic + Action prompt 加 force_cot |
+| `feat-2026-05-17-v0-subtask-T-NAV-1` | 🟢 已 push | `c61f309` | 5 subtask 验证 + force_cot A/B 全跑完。终判 2 PASS / 3 FAIL |
+| `feat-2026-05-18-v0-det_goal_plus_force_cot` | 🟢 完成,本地 | `f894d71` | det_goal + force_cot 集成 + v1/v2 跑完。**关键发现**: 5 subtask PASS != production wins;交叉验证暴露 selector 是真瓶颈 |
+| `feat-2026-05-18-v0-revise_bench` | 🟢 **当前** | - | 测 Reflection 是否会 evidence-driven 修目标(T-REVISE)|
 | `docs-reorg` | 🟡 等合 | `181d0b6` (2026-05-16) | 文档体系迁移,昨天写完 |
 | `feat-2026-05-16-v01-predictor` | ❌ 不合 | `722db78` (2026-05-16) | CNN OOD AUC 0.16 失败结论存档 |
 | `feat-2026-05-16-v0-grpo_train` | ⏳ Phase 0 | `11ed21f` (2026-05-16) | rollout_wrapper + 10 unit tests pass。真训练未跑 |
@@ -60,15 +61,25 @@
 
 ## 4. 验证结果汇总
 
-### 🔑 关键新发现 (2026-05-18 02:00)
+### 🔑 关键新发现 (2026-05-18)
+
+| 发现 | 来源 |
+|---|---|
+| **5 subtask PASS ≠ production wins** —— 拆分覆盖 "given target → execute" 下游,**完全没测 "from frame → hypothesize → revise" 上游** | det_goal §6 |
+| **v1 (Reflection 截断) 75% change_rate > v2 (Reflection 正常) 47%** —— **真正主导的是 orchestrator R3 / mask,不是 LLM** | det_goal §5.2 |
+| **T-NAV-1 production 93% > bench 71%** —— bench letter-shuffle 4-选-1 比 production "pick ACTION1..7" 还难 | det_goal §5.4 |
+| **T-SEL-1 production 0% << bench 70%** —— click_targets bandit 选错 object,**bench 没测"选哪个"这一步** | det_goal §5.4 |
+| **goal_evaluator 100/100 都 None** —— Reflection 实际写 "to top edge" / "towards center",我的 parser 找 "col=N" → 输入分布错 | det_goal §5.3 |
+| **架构含义**: 下一个分支应该测 **T-REVISE** (Reflection 是否会 evidence-driven 修目标),而不是再补 prompt | det_goal §6 |
+
+### 🔑 早前发现 (2026-05-18 02:00,force_cot A/B)
 
 | 发现 | 来源 |
 |---|---|
 | **force_cot prompt 让激活率从 0-100% 不稳定 → 56-100% 稳定** | force_cot (2026-05-18) |
 | **T-NAV-3 67% → 97% (+30pp PASS)** —— prompt 单 fix 直接转 PASS | force_cot |
 | **T-GOAL long_acc = 33.7%** —— 即使 98/100 激活 CoT,模型也答不对,**任务超出 SmolLM3-3B 能力**,prompt 救不了 | force_cot |
-| **T-SEL-1 force_cot **倒退** 78% → 70%** —— force_cot 不是 free lunch,长 CoT 干扰坐标比较 | force_cot |
-| **架构含义**: Reflection 的 goal-check 必须 deterministic Python;Action Agent 可受益于 force_cot | force_cot §5 |
+| **T-SEL-1 force_cot **倒退** 78% → 70%** —— force_cot 不是 free lunch | force_cot |
 
 ### 🔑 早前发现 (2026-05-17 17:50)
 
@@ -162,12 +173,25 @@ docs/
     ├── 2026-05-17-v0-subtask-T-NAV-3/        🆕 L 型路径(67% FAIL)
     ├── 2026-05-17-v0-subtask-T-SEL-1/        ACTION6 click(78% FAIL, borderline)
     ├── 2026-05-17-v0-subtask-T-GOAL/         YES/NO 目标(30% SEVERE FAIL,疑似 0 通关根因)
-    └── 2026-05-18-v0-force_cot/              🆕 force_cot A/B(T-NAV-3 PASS,T-GOAL long_acc 证伪 LLM)
+    ├── 2026-05-18-v0-force_cot/              force_cot A/B(T-NAV-3 PASS,T-GOAL long_acc 证伪 LLM)
+    └── 2026-05-18-v0-det_goal_plus_force_cot/ 🆕 集成 + 交叉验证(5 subtask PASS != production wins 的证据)
 ```
 
 ---
 
 ## 6. 版本历史(最新在上)
+
+---
+
+### 2026-05-18 (latest) — 🟢 det_goal_plus_force_cot + 交叉验证 — `docs/project/2026-05-18-v0-det_goal_plus_force_cot/`
+
+- **分支**: `feat-2026-05-18-v0-det_goal_plus_force_cot`(本地)
+- **关键 commits**: `456f317`(集成) → `f894d71`(v1 报告) → 本次(v2 + 交叉验证)
+- **一句话**: ar25 2 round × 100 step,首次 change_rate 破 70%(v1 75% / v2 47%),但仍 **0 wins**。**核心发现:5 subtask PASS ≠ production wins;真正主导的是 orchestrator hard rules,不是 LLM 推理**;**T-SEL-1 production 0% (vs bench 70%) 暴露 selector 是真瓶颈**
+- **关键 outputs**:
+  - `outputs/det_goal_force_cot_ar25_2x100_20260518-025313/`(v1,reflection_tokens=250 被截断)
+  - `outputs/det_goal_force_cot_v2_ar25_2x100_20260518-090129/round_00/`(v2 round 0,reflection_tokens=2048,带 play.gif)
+- **架构含义**: 下一个分支放弃补 evaluator,改测 **T-REVISE**(Reflection 是否会 evidence-driven 修目标)
 
 ---
 
