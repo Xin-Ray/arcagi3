@@ -51,7 +51,23 @@ _ROW_KEYWORDS: dict[str, int] = {
     "last": 63,
 }
 
+# 2026-05-18 v1: production hypothesis vocab discovered from v2 round 0
+# trace. Reflection writes "to the top edge" / "to the center" / "align X
+# and Y" without specifying axis. Map these to structural predicates.
+_EDGE_TARGETS: dict[str, tuple[str, int]] = {
+    "top edge":    ("move_to_row", 0),
+    "topmost":     ("move_to_row", 0),
+    "bottom edge": ("move_to_row", 63),
+    "bottommost":  ("move_to_row", 63),
+    "left edge":   ("move_to_col", 0),
+    "leftmost":    ("move_to_col", 0),
+    "right edge":  ("move_to_col", 63),
+    "rightmost":   ("move_to_col", 63),
+}
+
 _GRID_MAX = 63  # 64x64 grid, indices 0..63
+_GRID_CENTER = 31  # ≈ center of 64x64 grid
+_CENTER_TOLERANCE = 3  # within +/- 3 cells of center counts as "centered"
 
 
 # ── predicate types ────────────────────────────────────────────────────
@@ -62,12 +78,14 @@ class GoalPredicate:
 
     kind: str
     """One of:
-      align_col  — N+ objects share a column (optionally pinned to specific col)
-      align_row  — N+ objects share a row    (optionally pinned to specific row)
-      move_to_col — object reaches a specific column
-      move_to_row — object reaches a specific row
-      stack      — X is directly above Y (same col, X.row == Y.row - 1)
-      adjacent   — X is adjacent to Y (any 4-neighbor)
+      align_col      — N+ objects share a column (optionally pinned to specific col)
+      align_row      — N+ objects share a row    (optionally pinned to specific row)
+      align_any      — N+ objects share EITHER same col OR same row (no axis hint)
+      move_to_col    — object reaches a specific column
+      move_to_row    — object reaches a specific row
+      move_to_center — object(s) within +/- _CENTER_TOLERANCE of grid center
+      stack          — X is directly above Y (same col, X.row == Y.row - 1)
+      adjacent       — X is adjacent to Y (any 4-neighbor)
     """
 
     # Selector for objects involved -- the most common case is a single
@@ -118,6 +136,29 @@ def evaluate_predicate(
         if pred.target is not None:
             return all_same and cols[0] == pred.target
         return all_same
+
+    if pred.kind == "align_any":
+        # No axis specified: succeeds if all selected share SAME col OR
+        # SAME row. (Captures "align tan and red" style hypothesis.)
+        if len(selected) < pred.min_count:
+            return None
+        cols = [int(round(o.center[1])) for o in selected]
+        rows = [int(round(o.center[0])) for o in selected]
+        same_col = len(set(cols)) == 1
+        same_row = len(set(rows)) == 1
+        return same_col or same_row
+
+    if pred.kind == "move_to_center":
+        if not selected:
+            return None
+        # All selected must be within tolerance of grid center
+        for o in selected:
+            r = int(round(o.center[0]))
+            c = int(round(o.center[1]))
+            if abs(r - _GRID_CENTER) > _CENTER_TOLERANCE \
+                    or abs(c - _GRID_CENTER) > _CENTER_TOLERANCE:
+                return False
+        return True
 
     if pred.kind == "align_row":
         if len(selected) < pred.min_count:
@@ -242,6 +283,17 @@ def parse_goal_hypothesis(text: str) -> Optional[GoalPredicate]:
 
     Returns None if no pattern matches -- caller should fall back to
     LLM-based judgment.
+
+    Pattern priority (most specific first):
+      1. "to the {top|bottom|left|right} edge"  -> move_to_row/col
+      2. "to the center"                         -> move_to_center
+      3. stack / on top of
+      4. adjacent / next to
+      5. align ... vertically [in ... column]
+      6. align ... horizontally [in ... row]
+      7. align X and Y (no axis)                -> align_any (NEW)
+      8. move to col=N / row=N
+      9. generic "in left column" without align
     """
     if not isinstance(text, str) or not text.strip():
         return None
@@ -249,18 +301,35 @@ def parse_goal_hypothesis(text: str) -> Optional[GoalPredicate]:
     low = text.lower()
     colors = _extract_colors(text)
 
-    # stack / on top of
+    # 1) "to the {top|bottom|left|right} edge" - the most common
+    # production pattern (v2 round 0 trace step 0, 15)
+    for keyword, (kind, target) in _EDGE_TARGETS.items():
+        if f"to the {keyword}" in low or f"to {keyword}" in low \
+                or f"toward the {keyword}" in low \
+                or f"towards the {keyword}" in low:
+            return GoalPredicate(
+                kind=kind, colors=colors, target=target,
+                min_count=1, raw=text)
+
+    # 2) "to the center" / "towards the center" - production pattern
+    # (v2 round 0 trace step 47, 56, 60, 75, 79)
+    if re.search(r"\b(?:to|toward|towards)\s+(?:the\s+)?(?:center|middle)\b", low):
+        return GoalPredicate(
+            kind="move_to_center", colors=colors, target=None,
+            min_count=1, raw=text)
+
+    # 3) stack / on top of
     if re.search(r"\bstack(?:ed)?\b.*\bon\s+top\s+of\b", low) \
             or re.search(r"\bon\s+top\s+of\b.*", low) and "align" not in low:
         return GoalPredicate(
             kind="stack", colors=colors, min_count=2, raw=text)
 
-    # adjacent / next to
+    # 4) adjacent / next to
     if re.search(r"\b(?:next\s+to|adjacent|touching)\b", low) and "align" not in low:
         return GoalPredicate(
             kind="adjacent", colors=colors, min_count=2, raw=text)
 
-    # align ... vertically [in ... column]
+    # 5) align ... vertically [in ... column]
     if re.search(r"\balign(?:ed|ing)?\b.*\bvertical(?:ly)?\b", low) \
             or re.search(r"\bvertical(?:ly)?\b.*\balign", low):
         target = _resolve_column_target(text)
@@ -268,7 +337,7 @@ def parse_goal_hypothesis(text: str) -> Optional[GoalPredicate]:
             kind="align_col", colors=colors, target=target,
             min_count=2, raw=text)
 
-    # align ... horizontally [in ... row]
+    # 6) align ... horizontally [in ... row]
     if re.search(r"\balign(?:ed|ing)?\b.*\bhorizontal(?:ly)?\b", low) \
             or re.search(r"\bhorizontal(?:ly)?\b.*\balign", low):
         target = _resolve_row_target(text)
@@ -276,7 +345,16 @@ def parse_goal_hypothesis(text: str) -> Optional[GoalPredicate]:
             kind="align_row", colors=colors, target=target,
             min_count=2, raw=text)
 
-    # move to column N
+    # 7) NEW: "align X and Y" without axis - production writes
+    # "align the tan objects #7 and #8" or "align the purple objects"
+    # without specifying vertical/horizontal. v2 round 0 trace step 17, 75.
+    # Fall back to align_any (same col OR same row).
+    if re.search(r"\balign(?:ed|ing)?\b", low):
+        return GoalPredicate(
+            kind="align_any", colors=colors, target=None,
+            min_count=2, raw=text)
+
+    # 8) move to column N
     if re.search(r"\bmove\b.*\b(?:col|column)\b", low):
         target = _resolve_column_target(text)
         if target is not None:
@@ -292,7 +370,7 @@ def parse_goal_hypothesis(text: str) -> Optional[GoalPredicate]:
                 kind="move_to_row", colors=colors, target=target,
                 min_count=1, raw=text)
 
-    # generic "in left column" / "in col 0" without 'align' keyword
+    # 9) generic "in left column" / "in col 0" without 'align' keyword
     target_col = _resolve_column_target(text)
     if target_col is not None and ("column" in low or "col" in low):
         return GoalPredicate(

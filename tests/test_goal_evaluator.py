@@ -177,3 +177,115 @@ def test_e2e_match_count_too_low_returns_none():
     achieved, _ = evaluate_goal(
         "align two yellow squares vertically in left column", objects)
     assert achieved is None
+
+
+# ── v1 (2026-05-18): production vocab extension ────────────────────────
+
+def test_parse_top_edge():
+    pred = parse_goal_hypothesis(
+        "move the red 1x1 (obj_0) and the yellow 1x1 (obj_1) to the top edge of the board"
+    )
+    assert pred is not None
+    assert pred.kind == "move_to_row"
+    assert pred.target == 0
+
+
+def test_parse_left_edge():
+    pred = parse_goal_hypothesis("move red and yellow to the left edge of the board")
+    assert pred is not None
+    assert pred.kind == "move_to_col"
+    assert pred.target == 0
+
+
+def test_parse_right_edge():
+    pred = parse_goal_hypothesis("push the gray block to the right edge")
+    assert pred is not None
+    assert pred.kind == "move_to_col"
+    assert pred.target == 63
+
+
+def test_parse_to_center():
+    pred = parse_goal_hypothesis(
+        "move the tan objects #7 and #8 to the center of the board")
+    assert pred is not None
+    assert pred.kind == "move_to_center"
+    assert "tan" in pred.colors
+
+
+def test_parse_towards_center():
+    pred = parse_goal_hypothesis(
+        "move the purple objects towards the center of the board to align them")
+    assert pred is not None
+    assert pred.kind == "move_to_center"
+
+
+def test_parse_align_no_axis_falls_back_to_align_any():
+    """'align the tan objects #7 and #8' without axis -> align_any."""
+    pred = parse_goal_hypothesis("align the tan objects #7 and #8")
+    assert pred is not None
+    assert pred.kind == "align_any"
+    assert "tan" in pred.colors
+
+
+def test_evaluate_top_edge_true():
+    pred = GoalPredicate(kind="move_to_row", colors=("red",), target=0, min_count=1)
+    objs = [_obj(1, "red", 0, 30)]  # at top edge
+    assert evaluate_predicate(pred, objs) is True
+
+
+def test_evaluate_top_edge_false():
+    pred = GoalPredicate(kind="move_to_row", colors=("red",), target=0, min_count=1)
+    objs = [_obj(1, "red", 25, 30)]  # not at top
+    assert evaluate_predicate(pred, objs) is False
+
+
+def test_evaluate_center_true():
+    pred = GoalPredicate(kind="move_to_center", colors=("tan",), min_count=1)
+    objs = [_obj(1, "tan", 31, 31), _obj(2, "tan", 30, 32)]  # both ~center
+    assert evaluate_predicate(pred, objs) is True
+
+
+def test_evaluate_center_false():
+    pred = GoalPredicate(kind="move_to_center", colors=("tan",), min_count=1)
+    objs = [_obj(1, "tan", 0, 0)]  # corner, far from center
+    assert evaluate_predicate(pred, objs) is False
+
+
+def test_evaluate_align_any_same_col_true():
+    """align_any succeeds when objects share column (even no axis specified)."""
+    pred = GoalPredicate(kind="align_any", colors=("tan",), min_count=2)
+    objs = [_obj(1, "tan", 5, 10), _obj(2, "tan", 25, 10)]
+    assert evaluate_predicate(pred, objs) is True
+
+
+def test_evaluate_align_any_same_row_true():
+    pred = GoalPredicate(kind="align_any", colors=("tan",), min_count=2)
+    objs = [_obj(1, "tan", 30, 5), _obj(2, "tan", 30, 25)]
+    assert evaluate_predicate(pred, objs) is True
+
+
+def test_evaluate_align_any_false():
+    pred = GoalPredicate(kind="align_any", colors=("tan",), min_count=2)
+    objs = [_obj(1, "tan", 5, 10), _obj(2, "tan", 25, 30)]  # neither col nor row match
+    assert evaluate_predicate(pred, objs) is False
+
+
+# ── coverage on v2 round 0 production hypotheses ───────────────────────
+
+V2_HYPOTHESES = [
+    "move the red 1x1 (obj_0) and the yellow 1x1 (obj_1) to the top edge of the board",
+    "move the red 1x1 (obj_0) and the yellow 1x1 (obj_1) to the left edge of the board",
+    "align the tan objects #7 and #8",
+    "move the tan objects #7 and #8 towards each other to align them",
+    "move the tan objects #7 and #8 to the center of the board",
+    "move the tan objects #11 and #12 to the center of the board",
+    "move the tan objects #10 and #11 to the center of the board",
+    "align the purple objects #6, #7, #8, #9 to the center of the board",
+    "move the purple objects towards the center of the board to align them",
+]
+
+
+def test_v2_production_hypothesis_coverage():
+    """Parser must handle all 9 distinct v2 round 0 hypotheses."""
+    unparsed = [h for h in V2_HYPOTHESES if parse_goal_hypothesis(h) is None]
+    assert unparsed == [], f"Unparsed: {unparsed}"
