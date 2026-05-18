@@ -2,7 +2,7 @@
 
 > 10 分钟看完知道现状。状态码 🟢 当前活、🟡 参考、⚫ 历史。
 
-最近更新: 2026-05-18 (det_goal_plus_force_cot v2 round 0 跑完 + 交叉验证)
+最近更新: 2026-05-18 (Python parser vs LLM judge A/B 完成 — parser 完胜)
 
 > **昨晚跨分支汇报**: [`tonight_summary.md`](./tonight_summary.md) + [`figures/tonight_summary.png`](./figures/tonight_summary.png)
 
@@ -65,6 +65,8 @@
 
 | 发现 | 来源 |
 |---|---|
+| **Python parser 完胜 LLM judge on goal-achievement** —— 83% vs 68% acc,**100% recall on TRUE vs 22%**,1.25M× 更快 | goal_judge_ab |
+| **Parser extended v1 覆盖 100% v2 production hypothesis** —— "edge" / "center" / "align (no axis)" 等 9/9 patterns 都 parse | goal_judge_ab |
 | **5 subtask PASS ≠ production wins** —— 拆分覆盖 "given target → execute" 下游,**完全没测 "from frame → hypothesize → revise" 上游** | det_goal §6 |
 | **v1 (Reflection 截断) 75% change_rate > v2 (Reflection 正常) 47%** —— **真正主导的是 orchestrator R3 / mask,不是 LLM** | det_goal §5.2 |
 | **T-NAV-1 production 93% > bench 71%** —— bench letter-shuffle 4-选-1 比 production "pick ACTION1..7" 还难 | det_goal §5.4 |
@@ -174,7 +176,8 @@ docs/
     ├── 2026-05-17-v0-subtask-T-SEL-1/        ACTION6 click(78% FAIL, borderline)
     ├── 2026-05-17-v0-subtask-T-GOAL/         YES/NO 目标(30% SEVERE FAIL,疑似 0 通关根因)
     ├── 2026-05-18-v0-force_cot/              force_cot A/B(T-NAV-3 PASS,T-GOAL long_acc 证伪 LLM)
-    └── 2026-05-18-v0-det_goal_plus_force_cot/ 🆕 集成 + 交叉验证(5 subtask PASS != production wins 的证据)
+    ├── 2026-05-18-v0-det_goal_plus_force_cot/ 集成 + 交叉验证(5 subtask PASS != production wins 的证据)
+    └── 2026-05-18-v0-goal_judge_ab/           🆕 Python parser vs LLM judge A/B(parser 完胜)
 ```
 
 ---
@@ -183,7 +186,19 @@ docs/
 
 ---
 
-### 2026-05-18 (latest) — 🟢 det_goal_plus_force_cot + 交叉验证 — `docs/project/2026-05-18-v0-det_goal_plus_force_cot/`
+### 2026-05-18 (latest) — 🟢 goal_judge A/B — `docs/project/2026-05-18-v0-goal_judge_ab/`
+
+- **分支**: `feat-2026-05-18-v0-det_goal_plus_force_cot`(本地,复用)
+- **关键 commit**: `932dcef`(parser 扩展 + LLM judge + 全套 bench 代码)+ 本次(报告)
+- **一句话**: 反思关键 step "is hypothesis achieved?" 对比 Python parser vs LLM judge,**parser 83% > LLM 68%,recall on TRUE 100% vs 22%,速度 1.25M×**。production 反思闭环用 parser-only。
+- **关键 outputs**:
+  - `outputs/bench_goal_judges_20260518-160438/metrics.json`
+  - `outputs/bench_goal_judges_20260518-160438/per_probe.jsonl`(200 行 side-by-side)
+- **下一步**: 用扩展 parser 跑 ar25 1×2×100,看 `[GOAL CHECK]` alert 是否真触发 + 任 1 round 通关
+
+---
+
+### 2026-05-18 — 🟢 det_goal_plus_force_cot + 交叉验证 — `docs/project/2026-05-18-v0-det_goal_plus_force_cot/`
 
 - **分支**: `feat-2026-05-18-v0-det_goal_plus_force_cot`(本地)
 - **关键 commits**: `456f317`(集成) → `f894d71`(v1 报告) → 本次(v2 + 交叉验证)

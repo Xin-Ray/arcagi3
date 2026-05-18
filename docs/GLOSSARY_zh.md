@@ -458,6 +458,24 @@ CLI: `scripts/run_v3_multi_round.py --reasoning-mode {auto,cot,no_think}`(2026-0
 **出处**: [`project/2026-05-17-v0-subtask_decomp/architecture.md`](./project/2026-05-17-v0-subtask_decomp/architecture.md)、`arc_agent/subtask_probes/__init__.py`、`scripts/bench_subtask.py` / `bench_subtask_batch.py`。
 **相关**: [[spatial probe]]、[[/think]]、[[T-NAV-1]]、[[T-NAV-2]]、[[T-NAV-3]]、[[T-SEL-1]]、[[T-GOAL]]。
 
+### `goal_evaluator` / `goal_judge_ab`
+
+🟢 反思闭环里 "is hypothesis achieved?" 这一 step 的两种实现:
+
+| 方法 | T-GOAL acc | recall on TRUE | 每 probe 耗时 |
+|---|---:|---:|---:|
+| **Python parser** (`arc_agent/goal_evaluator.py`) | **83%** | **100%** | 0.02 ms |
+| **LLM judge** (`arc_agent/llm_goal_judge.py`) | 68% | 22% | ~25 s |
+
+**production 选 parser** — 100% recall on TRUE 意味着每次真达成都会触发反思 (用户 2026-05-18 设计的逻辑:`achieved + env != WIN → reject hypothesis`)。LLM 22% 漏 78% 等于反思机制实质不动。
+
+**Parser v1 覆盖 patterns**: `align ... vertically/horizontally [in target col/row]` / `to the {top|bottom|left|right} edge` / `to the center` / `align X and Y` (无轴) / `stack X on Y` / `adjacent` / `move to col=N or row=N`。v2 round 0 全 11 个 unique hypothesis **100% parse 命中**。
+
+**Hybrid 设计 (未来)**: parser fail → LLM fallback;当前 ar25 不需要。
+
+**出处**: [`project/2026-05-18-v0-goal_judge_ab/report.md`](./project/2026-05-18-v0-goal_judge_ab/report.md)。
+**相关**: [[T-GOAL]]、[[cross-validation]]、[[goal_hypothesis]]、[[Reflection Agent]]。
+
 ### `cross-validation` (subtask 跨验证)
 
 🟢 用 production trace.jsonl 反向验证 [[subtask probe]] 测的能力是否真在 production work。**2026-05-18 首次做,结论是混合的**:
