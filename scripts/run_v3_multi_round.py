@@ -51,6 +51,7 @@ from arc_agent.action_mask import apply_action_mask, compute_action_mask  # noqa
 from arc_agent.agents.action_agent import ActionAgent  # noqa: E402
 from arc_agent.agents.reflection_agent import ReflectionAgent  # noqa: E402
 from arc_agent.click_targets import update_click_targets  # noqa: E402
+from arc_agent.goal_evaluator import evaluate_goal  # noqa: E402
 from arc_agent.knowledge import Knowledge  # noqa: E402
 from arc_agent.orchestrator_rules import (  # noqa: E402
     auto_failed_strategies_from_outcome_log,
@@ -698,8 +699,60 @@ def run_one_game(
                 state_revisit=state_revisit,
                 last_picks=last_picks,
             )
-            if unified_alert:
-                knowledge.current_alert = unified_alert
+
+            # Deterministic goal evaluator (2026-05-18 v0). Parses
+            # knowledge.goal_hypothesis into a coord-predicate and checks
+            # against the current frame objects. On parseable hypotheses
+            # this OVERRIDES the LLM's goal-recognition (which T-GOAL
+            # bench showed is near-random at 33.7% long_acc).
+            goal_achieved_det: Optional[bool] = None
+            goal_pred_kind: str = ""
+            try:
+                _achieved, _pred = evaluate_goal(
+                    knowledge.goal_hypothesis,
+                    refl_frame_objs or [],
+                )
+                if _pred is not None:
+                    goal_pred_kind = _pred.kind
+                goal_achieved_det = _achieved
+            except Exception as _e:
+                print(f"[round {r}] goal_evaluator failed at step {step}: {_e}",
+                      file=sys.stderr)
+
+            # Decide what GOAL CHECK signal to add to the alert. Two
+            # interesting cases:
+            #   (a) achieved=True but env state != WIN  ->  hypothesis is
+            #       wrong (LLM thought goal was X, agent reached X, env
+            #       didn't WIN)  ->  downgrade goal_confidence to "low"
+            #       and tell next Action step
+            #   (b) achieved=False  ->  positive ground truth, surface to
+            #       Action so it doesn't get confused by stale LLM signal
+            goal_check_block = ""
+            if goal_achieved_det is True and latest.state != GameState.WIN:
+                goal_check_block = (
+                    f"[GOAL CHECK] Deterministic check says hypothesis "
+                    f"({goal_pred_kind}) is ACHIEVED, but env state is "
+                    f"{latest.state.name} (not WIN). The hypothesis is "
+                    f"likely WRONG -- propose a new one next step."
+                )
+                # Force confidence down so Reflection retries hypothesis
+                knowledge = knowledge.merged_with_delta(
+                    {"goal_confidence_update": "low"})
+            elif goal_achieved_det is False:
+                goal_check_block = (
+                    f"[GOAL CHECK] Deterministic check ({goal_pred_kind}) "
+                    f"says hypothesis NOT met yet. Continue toward target."
+                )
+            # If goal_achieved_det is None (unparseable / not enough info),
+            # we say nothing -- LLM keeps its own judgment.
+
+            # Compose final alert: GOAL CHECK first (deterministic signals
+            # have priority over LLM-derived ones), then the unified alert.
+            combined_alert = "\n".join(
+                s for s in (goal_check_block, unified_alert) if s
+            )
+            if combined_alert:
+                knowledge.current_alert = combined_alert
 
             # 5) viz
             if save_images and grid_after is not None:
@@ -735,6 +788,8 @@ def run_one_game(
                 "reflection_delta": delta,
                 "no_op_streak": no_op_streak,
                 "state_revisit_count": state_revisit,
+                "goal_achieved_det": goal_achieved_det,
+                "goal_pred_kind": goal_pred_kind,
             })
             _append_jsonl(knowledge_step_path, {
                 "step": step,

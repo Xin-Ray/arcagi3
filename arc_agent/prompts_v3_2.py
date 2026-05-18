@@ -379,12 +379,16 @@ def build_action_user_prompt(
 
 
 _ACTION_ASK_BLOCK = """[ASK]
-  Output TWO lines (no JSON, no markdown):
+  Solve this step by step. First note the active object's position and the
+  goal_hypothesis target. Then pick the ACTION whose effect moves toward
+  the target. Output TWO lines (no JSON, no markdown):
     reasoning: <one sentence, mention the expected effect>
     action: <ACTION1..ACTION7 -- only ACTION6 takes x y>"""
 
 _ACTION_ASK_BLOCK_MC = """[ASK]
-  Pick exactly one candidate by its letter. Output TWO lines:
+  Solve this step by step. For each candidate, decide whether its effect
+  moves toward the goal_hypothesis. Then pick exactly one by its letter.
+  Output TWO lines:
     reasoning: <one sentence justifying the pick vs the others>
     choice: <A | B | C>"""
 
