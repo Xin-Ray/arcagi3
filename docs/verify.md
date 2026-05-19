@@ -39,7 +39,79 @@ env.step(action)
 
 ---
 
-## 2. 每模块详细规格
+## 🔴 2. 当前已知问题清单(2026-05-19)
+
+> **5 game G_base 全 0/5 wins。change_rate 82% (vs SmolLM3 5×2×300 baseline 64%) 提升了但 wins 没动**。
+> 用 per-module 真 PASS 定义重审 Phase 4 trace,发现 2 个 production-level hidden bug + 2 个方法学问题。
+
+### 🔴 BUG-1 (致命): <span style="color:red">**Hypothesis 0/794 步是 directional**</span>
+
+- **模块**: Module 1 (Goal Generation) → 间接阻塞 Module 4 (Action Selection)
+- **现象**: Phase 4 五个 game 总 794 步,Reflection 写的 hypothesis **全是 `align_any` 或 `match X with Y`(无方向 kind)**;**没有一步**写过 `move_to_row/col/center/stack` 这种有 target coord 的 directional kind
+- **后果**: Action 拿到 hypothesis 但**没法解析出方向**(parser kind=align_any,target=None),Action 选 ACTION 时**没有"朝哪走"的信号**
+- **根因**: SmolLM3 `/no_think` 模式偏好 "match X with Y" 句式(Phase 1B reflection_raw 里 10/10 都是),`/think` 写 directional 多但 chain 不闭合
+- <span style="color:red">**当前 Module 4 PASS 测不出**</span> — 因为没 directional hypothesis 可对照方向
+- **见**: `docs/project/2026-05-19-v0-v4_clean_baseline/module_validation.md` §2
+
+### 🔴 BUG-2 (严重): <span style="color:red">**reasoning ↔ action 49% 纯 LLM 字母 confusion**</span>
+
+- **模块**: Module 5 (force_cot Prompt) + Module 6 (K=3 Candidates 的 letter mapping)
+- **现象**: Phase 4 五 game 中,reasoning 提了 ACTION 的 654 步,**只有 51% (336) reasoning 提的 ACTION == 实际选的 action**;**49% (318) 脱节**
+- **根因诊断**: orch_override 在所有 318 个 mismatch 步**贡献 0 次** — 不是 R3 forced-explore 改的,不是 anti-collapse 改的。**纯 LLM 自身字母 mapping confusion**: K=3 候选 letter 每步 shuffle ("A: ACTION3, B: ACTION1, C: ACTION6"),model reasoning 说 "I want ACTION1",但 output "choice: A" → orchestrator A→ACTION3 → trace 记 ACTION3
+- <span style="color:red">**force_cot prompt 在 production 半数 step 无效**</span>(被 letter mapping disconnect 抵消)
+- **见**: `docs/project/2026-05-19-v0-v4_clean_baseline/module_validation.md` §3
+
+### 🟠 BUG-3 (方法学根因): <span style="color:red">**bench 跟 production 严重 distribution shift**</span>
+
+- **现象**: 6 个 module bench 全 PASS,但 production 实测半数 FAIL
+- **根因**: bench 砍掉了 production 的复杂度:
+
+| bench 用的 | production 加了 | 后果 |
+|---|---|---|
+| 预写好的 hypothesis (T-GOAL) | Reflection 自由写 | dialect 不可控 → BUG-1 |
+| 固定 letter mapping | K=3 动态 shuffle | letter confusion → BUG-2 |
+| (current, target) 直接给 | Reflection 推断 target | 可能幻觉 (smoke 2/3 发现) |
+| 一次性 single probe | 跨步骤累积 Knowledge | 累积错误信息污染 |
+
+- <span style="color:red">**bench PASS ≠ production PASS**</span> — 必须给每个模块加 production-level bench (T-DIALECT / T-MAPPING / T-REJECT 等),不能只 bench sanitized 形态
+
+### 🟠 BUG-4 (评估方法学): <span style="color:red">**之前用 proxy metric 不是真 PASS 定义**</span>
+
+- **现象**: 2026-05-19 之前我说"6 模块 validated"用的是 change_rate / count / diversity 这种 proxy
+- **真 PASS 定义** 跟 proxy 不一致:
+
+| 模块 | proxy(之前用的) | 真 PASS 定义 |
+|---|---|---|
+| Module 1 Goal Gen | "写了几个 + 不写 sentinel" | hypothesis 描述的状态 = game 真实 win 条件 |
+| Module 2 Parser | T-GOAL 83% on synthetic | parser=True ↔ env-WIN |
+| Module 3 Reject | rejected_goals count | reject 的都是真错的 |
+| Module 4 Action | action diversity | action 方向 == hypothesis 方向 |
+| Module 5 force_cot | reasoning 长度 | reasoning 提的 ACTION == 实际 action |
+| Module 6 K=3 | change_rate 提升 | K=3 含 goal-aligned 选项 |
+
+- **当前**: 用真 PASS 定义重审 Phase 4 → BUG-1, BUG-2 暴露;Module 1 + 3 还需人工标注才能验证
+
+### 🟡 UNKNOWN-1: <span style="color:red">**Module 1 (Goal Generation) PASS 率未知**</span>
+
+- 没 bench + 5 game G_base 0 通关 → 没法测 win-correlation
+- **等用户标 `annotation_request.md` Module 1**(13 条 hypothesis,YES/NO/PARTIAL/UNSURE)
+- 这是 BUG-1 的上游 — 即使 Module 1 PASS rate 高,BUG-1 仍存在(dialect 问题);如果 PASS rate 低,**通关无望**
+
+### 🟡 UNKNOWN-2: <span style="color:red">**Module 3 (Reflection Loop) reject 是否误伤未知**</span>
+
+- 没 bench + reject 的"对错"无 GT
+- **等用户标 `annotation_request.md` Module 4**(18 条 rejected hypothesis,CORRECT/WRONG/UNSURE)
+- 如果误伤多 → 反思机制反而阻碍正确 hypothesis 留下来
+
+### ⚪ 已 OK(背景信息)
+
+- **Module 0 (Perception)**: ✅ PASS,deterministic,800+ step 无错
+- **Module 2 (parser)**: bench 83% PASS,production 自动 check 待加(deterministic 必 100% match bench)
+- **Module 6 (K=3)**: ⚠️ partial — K<3 出现率 22% (FAIL ≤ 10% 阈值),其余 78% 步 K=3 工作
+
+---
+
+## 3. 每模块详细规格
 
 ### Module 0: Perception (scipy)
 
@@ -143,7 +215,7 @@ env.step(action)
 
 ---
 
-## 3. 集成测试协议 — 6 个"模块一致性"check
+## 4. 集成测试协议 — 6 个"模块一致性"check
 
 每个 module **bench PASS 不等于 production PASS**。集成后必须有一个 check 把 bench 跟 production 桥接。
 
@@ -210,7 +282,7 @@ production "model say A, actually B" 的步,把 prompt 整段 + raw response 摘
 
 ---
 
-## 4. 当前各模块 PASS / FAIL / UNKNOWN 状态(2026-05-19 截止)
+## 5. 当前各模块 PASS / FAIL / UNKNOWN 状态(2026-05-19 截止)
 
 | # | Module | Bench | Production | 集成 check | 备注 |
 |---:|---|:-:|:-:|:-:|---|
@@ -224,7 +296,7 @@ production "model say A, actually B" 的步,把 prompt 整段 + raw response 摘
 
 ---
 
-## 5. 优先级跟进
+## 6. 优先级跟进
 
 | P | 行动 | 修哪个 module |
 |---|---|---|
@@ -241,7 +313,7 @@ production "model say A, actually B" 的步,把 prompt 整段 + raw response 摘
 
 ---
 
-## 6. 引用
+## 7. 引用
 
 - 顶层版: `docs/README.md` §2
 - Phase 4 实测重审: `docs/project/2026-05-19-v0-v4_clean_baseline/module_validation.md`
