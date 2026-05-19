@@ -1,0 +1,29 @@
+{
+  "started_at": "20260519-062440",
+  "git_commit": null,
+  "args": {
+    "game": "bp35",
+    "rounds": 5,
+    "max_actions": 100,
+    "fps": 2,
+    "seed": 42,
+    "output": "",
+    "tag": "v4_phase4_g2_bp35_s42",
+    "dry_run": false,
+    "no_images": false,
+    "max_new_tokens_action": 256,
+    "max_new_tokens_reflection": 1024,
+    "mask_mode": "off",
+    "backbone_path": "HuggingFaceTB/SmolLM3-3B",
+    "reasoning_mode": "no_think",
+    "propose": "on",
+    "preload_action_map": "none",
+    "click_targets": "off",
+    "action_semantics_from_llm": "off",
+    "hard_rules": "off",
+    "validate_hypothesis_schema": "wide",
+    "max_actions_total": 200,
+    "max_rounds": null
+  },
+  "doc": "docs/arch_v3_2_zh.md"
+}

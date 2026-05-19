@@ -1,0 +1,600 @@
+--- step 0 ---
+{
+  "goal_hypothesis_update": "match every red dot with a red target square",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 1 ---
+{
+  "goal_hypothesis_update": "match every red dot with a red target square",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 2 ---
+{
+  "goal_hypothesis_update": "match every red dot with a red target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 moved yellow 45x9 (obj_000) UP 3 cells, but reasoning predicted DOWN"
+}
+--- step 3 ---
+{
+  "goal_hypothesis_update": "match every red dot with a red target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 moves red objects DOWN, not UP"
+}
+--- step 4 ---
+{
+  "goal_hypothesis_update": "match every red dot with a red target square",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 5 ---
+{
+  "goal_hypothesis_update": "match every red dot with a red target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 moved yellow 1x1 (obj_000) UP 3 cells, but reasoning predicted DOWN"
+}
+--- step 6 ---
+{
+  "goal_hypothesis_update": "match every red dot with a red target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 moves the yellow 1x1 (obj_000) UP by 3 cells; goal is bottom edge"
+}
+--- step 7 ---
+{
+  "goal_hypothesis_update": "match every red dot with a red target square",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 8 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 should move the yellow 1x1 (obj_000) UP by 3 cells"
+}
+--- step 9 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 should move the yellow 1x1 (obj_000) DOWN by 3 cells"
+}
+--- step 10 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 was expected to move the yellow 1x1 (obj_000) DOWN by 3 cells, but it did not."
+}
+--- step 11 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 12 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 should move the yellow 1x1 (obj_000) UP by 3 cells"
+}
+--- step 13 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 should move the yellow 1x1 (obj_000) UP by 3 cells"
+}
+--- step 14 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 should move the yellow 1x1 (obj_000) DOWN 3 cells"
+}
+--- step 15 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 16 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 moves the yellow 1x1 (obj_000) DOWN 3 cells, but the yellow 1x1 (obj_000) is not near a yellow target square"
+}
+--- step 17 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 moves the yellow 1x1 (obj_000) DOWN 3 cells, but the goal is to match it with a yellow target square"
+}
+--- step 18 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 moves the yellow 1x1 (obj_000) DOWN 3 cells, but the yellow 1x1 (obj_000) is not near a yellow target square"
+}
+--- step 19 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 moves the yellow 1x1 (obj_000) DOWN 3 cells; goal is bottom edge"
+}
+--- step 20 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 21 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 22 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 should move the yellow 1x1 (obj_000) UP by 3 cells"
+}
+--- step 23 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 should move the yellow 1x1 (obj_000) DOWN 3 cells"
+}
+--- step 24 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 should move the yellow 1x1 (obj_000) DOWN 3 cells"
+}
+--- step 25 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 should move the yellow 1x1 (obj_000) DOWN 3 cells"
+}
+--- step 26 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 should move the yellow 1x1 (obj_000) DOWN 3 cells"
+}
+--- step 27 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 should move the yellow 1x1 (obj_000) DOWN 3 cells"
+}
+--- step 28 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 should move the yellow 1x1 (obj_000) DOWN 3 cells"
+}
+--- step 29 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 should move the yellow 1x1 (obj_000) DOWN 3 cells"
+}
+--- step 30 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 should move the yellow 1x1 (obj_000) DOWN 3 cells"
+}
+--- step 31 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 should move the yellow 1x1 (obj_000) DOWN 3 cells"
+}
+--- step 32 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 should move the yellow 1x1 (obj_000) DOWN 3 cells"
+}
+--- step 33 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 should move the yellow 1x1 (obj_000) DOWN 3 cells"
+}
+--- step 34 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 should move the yellow 1x1 (obj_000) DOWN 3 cells"
+}
+--- step 35 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "No update"
+}
+--- step 36 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 should move the yellow 1x1 (obj_000) DOWN 3 cells"
+}
+--- step 37 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 should move the yellow 1x1 (obj_000) DOWN 3 cells"
+}
+--- step 38 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "No update"
+}
+--- step 39 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 should move the yellow 1x1 (obj_000) DOWN 3 cells"
+}
+--- step 40 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 should move the yellow 1x1 (obj_000) DOWN 3 cells"
+}
+--- step 41 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "No update"
+}
+--- step 42 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "No update"
+}
+--- step 43 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 should move the yellow 1x1 (obj_000) DOWN 3 cells"
+}
+--- step 44 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 should move the yellow 1x1 (obj_000) DOWN 3 cells"
+}
+--- step 45 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "No alert"
+}
+--- step 46 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "No update"
+}
+--- step 47 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 should move the yellow 1x1 (obj_000) DOWN 3 cells"
+}
+--- step 48 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 should move the yellow 1x1 (obj_000) DOWN 3 cells"
+}
+--- step 49 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 should move the yellow 1x1 (obj_000) DOWN 3 cells"
+}
+--- step 50 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 should move the yellow 1x1 (obj_000) DOWN 3 cells"
+}
+--- step 51 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "No update"
+}
+--- step 52 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "No update"
+}
+--- step 53 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "No alert"
+}
+--- step 54 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "No update"
+}
+--- step 55 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "No update"
+}
+--- step 56 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 should move the yellow 1x1 (obj_000) DOWN 3 cells"
+}
+--- step 57 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "No update"
+}
+--- step 58 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "No alert"
+}
+--- step 59 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 should move the yellow 1x1 (obj_000) DOWN 3 cells"
+}
+--- step 60 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "No alert"
+}
+--- step 61 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 should move the yellow 1x1 (obj_000) DOWN 3 cells"
+}
+--- step 62 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "No update"
+}
+--- step 63 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "No alert"
+}
+--- step 64 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "No update"
+}
+--- step 65 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "No update"
+}
+--- step 66 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "No update"
+}
+--- step 67 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 should move the yellow 1x1 (obj_000) DOWN 3 cells"
+}
+--- step 68 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "No update"
+}
+--- step 69 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "No update"
+}
+--- step 70 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "No update"
+}
+--- step 71 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "No update"
+}
+--- step 72 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 should move the yellow 1x1 (obj_000) DOWN 3 cells"
+}
+--- step 73 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 should move the yellow 1x1 (obj_000) DOWN 3 cells"
+}
+--- step 74 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "No update"
+}
+--- step 75 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 should move the yellow 1x1 (obj_000) DOWN 3 cells"
+}
+--- step 76 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "No alert"
+}
+--- step 77 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 should move the yellow 1x1 (obj_000) DOWN 3 cells"
+}
+--- step 78 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 should move the yellow 1x1 (obj_000) DOWN 3 cells"
+}
+--- step 79 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "No update"
+}
+--- step 80 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 should move the yellow 1x1 (obj_000) DOWN 3 cells"
+}
+--- step 81 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 should move the yellow 1x1 (obj_000) DOWN 3 cells"
+}
+--- step 82 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "No alert"
+}
+--- step 83 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "No update"
+}
+--- step 84 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 should move the yellow 1x1 (obj_000) DOWN 3 cells"
+}
+--- step 85 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "No update"
+}
+--- step 86 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "No update"
+}
+--- step 87 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 should move the yellow 1x1 (obj_000) DOWN 3 cells"
+}
+--- step 88 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 should move the yellow 1x1 (obj_000) DOWN 3 cells"
+}
+--- step 89 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 should move the yellow 1x1 (obj_000) DOWN 3 cells"
+}
+--- step 90 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "No update"
+}
+--- step 91 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 should move the yellow 1x1 (obj_000) DOWN 3 cells"
+}
+--- step 92 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "No alert"
+}
+--- step 93 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "No update"
+}
+--- step 94 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "No update"
+}
+--- step 95 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 should move the yellow 1x1 (obj_000) DOWN 3 cells"
+}
+--- step 96 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "No update"
+}
+--- step 97 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "No update"
+}
+--- step 98 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "ACTION1 should move the yellow 1x1 (obj_000) DOWN 3 cells"
+}
+--- step 99 ---
+{
+  "goal_hypothesis_update": "match every yellow 1x1 (obj_000) with a yellow target square",
+  "action_semantics_update": null,
+  "current_alert": "NO"
+}

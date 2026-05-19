@@ -1,0 +1,60 @@
+{
+  "game_id": "ar25-0c556536",
+  "n_rounds": 5,
+  "rounds_played": 2,
+  "rounds_won": 0,
+  "final_knowledge": {
+    "game_id": "ar25-0c556536",
+    "rounds_played": 2,
+    "rounds_won": 0,
+    "action_semantics": {},
+    "goal_hypothesis": "",
+    "goal_confidence": "low",
+    "rules": [],
+    "failed_strategies": [],
+    "round_history": [
+      "round 0: 85 steps, 73 changed (86%), levels+0, incomplete",
+      "round 1: 87 steps, 76 changed (87%), levels+0, incomplete"
+    ],
+    "rejected_goals": [
+      "match the moving blue square to the static blue target",
+      "match the moving yellow square to the static yellow target",
+      "match the moving yellow 1x1 (obj_000) to the static yellow target",
+      "match the moving yellow size=45 object to the static yellow target",
+      "match the moving yellow size=45 object (obj_0) to the static yellow target",
+      "match the moving purple 1x1 (obj_008) to the static purple target",
+      "match the moving purple 1x1 (obj_010) to the static purple target",
+      "match the moving yellow size=18 object (obj_017) to the static yellow target",
+      "match the moving purple 1x1s to the static purple targets",
+      "match the moving purple 1x1 (obj_018) with the static purple target"
+    ],
+    "click_targets": [],
+    "current_alert": ""
+  },
+  "per_round": [
+    {
+      "round": 0,
+      "n_steps": 85,
+      "n_changed": 73,
+      "n_no_op": 12,
+      "change_rate": 0.8588235294117647,
+      "levels_gained": 0,
+      "won": false,
+      "knowledge_action_semantics_size": 0,
+      "knowledge_rules_size": 0,
+      "knowledge_failed_strategies_size": 0
+    },
+    {
+      "round": 1,
+      "n_steps": 87,
+      "n_changed": 76,
+      "n_no_op": 11,
+      "change_rate": 0.8735632183908046,
+      "levels_gained": 0,
+      "won": false,
+      "knowledge_action_semantics_size": 0,
+      "knowledge_rules_size": 0,
+      "knowledge_failed_strategies_size": 0
+    }
+  ]
+}

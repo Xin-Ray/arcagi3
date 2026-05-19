@@ -1,0 +1,55 @@
+{
+  "game_id": "bp35-0a0ad940",
+  "n_rounds": 5,
+  "rounds_played": 2,
+  "rounds_won": 0,
+  "final_knowledge": {
+    "game_id": "bp35-0a0ad940",
+    "rounds_played": 2,
+    "rounds_won": 0,
+    "action_semantics": {},
+    "goal_hypothesis": "match every rose with a corresponding static target",
+    "goal_confidence": "low",
+    "rules": [],
+    "failed_strategies": [],
+    "round_history": [
+      "round 0: 36 steps, 29 changed (81%), levels+0, incomplete",
+      "round 1: 36 steps, 32 changed (89%), levels+0, incomplete"
+    ],
+    "rejected_goals": [
+      "match every red dot with a red target square",
+      "match the moving blue square to the static blue target",
+      "match every gray, green, maroon, navy, and purple object with a corresponding static target",
+      "match every purple object with a corresponding static target",
+      "match the moving blue square (obj_174) with the static blue target"
+    ],
+    "click_targets": [],
+    "current_alert": "[GOAL CHECK] Deterministic check (align_any) says hypothesis NOT met yet. Continue toward target."
+  },
+  "per_round": [
+    {
+      "round": 0,
+      "n_steps": 36,
+      "n_changed": 29,
+      "n_no_op": 7,
+      "change_rate": 0.8055555555555556,
+      "levels_gained": 0,
+      "won": false,
+      "knowledge_action_semantics_size": 0,
+      "knowledge_rules_size": 0,
+      "knowledge_failed_strategies_size": 0
+    },
+    {
+      "round": 1,
+      "n_steps": 36,
+      "n_changed": 32,
+      "n_no_op": 4,
+      "change_rate": 0.8888888888888888,
+      "levels_gained": 0,
+      "won": false,
+      "knowledge_action_semantics_size": 0,
+      "knowledge_rules_size": 0,
+      "knowledge_failed_strategies_size": 0
+    }
+  ]
+}

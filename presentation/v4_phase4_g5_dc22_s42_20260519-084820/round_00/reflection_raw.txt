@@ -1,0 +1,600 @@
+--- step 0 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 1 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 2 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 3 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 4 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 5 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 6 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 7 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 8 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 9 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 10 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 11 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 12 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 13 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": "ACTION4 moved the yellow 1x1 (obj_25) RIGHT 2 cells instead of moving it up"
+}
+--- step 14 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 15 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 16 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 17 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 18 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 19 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": "The reasoning predicted a move, but the actual outcome was a rightward move. The yellow 1x1 (obj_25) moved right 2 cells."
+}
+--- step 20 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 21 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 22 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 23 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 24 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 25 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 26 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 27 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 28 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 29 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 30 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 31 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 32 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 33 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 34 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 35 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 36 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 37 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 38 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 39 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 40 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 41 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": "The two red squares are not aligned vertically in the left column."
+}
+--- step 42 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 43 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 44 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 45 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 46 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 47 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 48 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 49 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 50 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 51 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": "The goal is to align the two red squares vertically in the left column, but the most recent action moved the maroon 1x1 down, not the red squares."
+}
+--- step 52 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 53 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 54 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 55 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 56 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 57 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 58 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 59 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 60 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 61 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 62 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 63 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 64 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 65 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 66 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 67 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 68 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 69 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 70 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 71 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 72 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 73 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 74 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": "The two red squares are not aligned vertically in the left column."
+}
+--- step 75 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 76 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 77 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 78 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 79 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 80 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 81 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 82 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 83 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 84 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 85 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 86 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 87 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 88 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 89 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 90 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 91 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 92 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 93 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 94 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 95 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": "The action was supposed to move the red square left, but it didn't change position."
+}
+--- step 96 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 97 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 98 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": ""
+}
+--- step 99 ---
+{
+  "goal_hypothesis_update": "align the two red squares vertically in the left column",
+  "action_semantics_update": null,
+  "current_alert": "The two red squares are not aligned vertically in the left column."
+}

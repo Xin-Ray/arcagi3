@@ -1,0 +1,53 @@
+{
+  "game_id": "cn04-2fe56bfb",
+  "n_rounds": 5,
+  "rounds_played": 2,
+  "rounds_won": 0,
+  "final_knowledge": {
+    "game_id": "cn04-2fe56bfb",
+    "rounds_played": 2,
+    "rounds_won": 0,
+    "action_semantics": {},
+    "goal_hypothesis": "",
+    "goal_confidence": "low",
+    "rules": [],
+    "failed_strategies": [],
+    "round_history": [
+      "round 0: 75 steps, 46 changed (61%), levels+0, incomplete",
+      "round 1: 75 steps, 65 changed (87%), levels+0, incomplete"
+    ],
+    "rejected_goals": [
+      "move the yellow 1x1 (obj_002) to the bottom edge",
+      "match the moving blue square to the static blue target",
+      "align the two red squares vertically in the left column"
+    ],
+    "click_targets": [],
+    "current_alert": "Your reasoning predicted an effect but the outcome contradicted it (ACTION6). Revise your model of what this action does -- do NOT repeat the same prediction next step."
+  },
+  "per_round": [
+    {
+      "round": 0,
+      "n_steps": 75,
+      "n_changed": 46,
+      "n_no_op": 29,
+      "change_rate": 0.6133333333333333,
+      "levels_gained": 0,
+      "won": false,
+      "knowledge_action_semantics_size": 0,
+      "knowledge_rules_size": 0,
+      "knowledge_failed_strategies_size": 0
+    },
+    {
+      "round": 1,
+      "n_steps": 75,
+      "n_changed": 65,
+      "n_no_op": 10,
+      "change_rate": 0.8666666666666667,
+      "levels_gained": 0,
+      "won": false,
+      "knowledge_action_semantics_size": 0,
+      "knowledge_rules_size": 0,
+      "knowledge_failed_strategies_size": 0
+    }
+  ]
+}
