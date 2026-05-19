@@ -53,7 +53,107 @@ flowchart TB
 
 ---
 
-## 3. Why **not** BFS / DFS / A\* as the primary action policy
+## 3. Methodology — how we decompose and validate
+
+The overall idea is the standard <span style="color:#1f77b4">**"decompose → validate parts → integrate → validate the whole"**</span> loop, but with a strict rule that catches our most common failure mode: **branch passes ≠ integrated whole passes**.
+
+### 3.1 Four-step loop
+
+```mermaid
+flowchart TB
+    Step1["1. Decompose the goal into branches<br/>(each a small, isolated sub-problem)"]
+    Step2["2. Validate the decomposition itself<br/>(do the branches cover the goal?)"]
+    Step3["3. Validate each branch<br/>(synthetic bench for capability)"]
+    Step4["4. Integrate + validate the whole<br/>(6 sub-validations, see 3.2)"]
+    Step1 --> Step2 --> Step3 --> Step4
+    Step4 -- if branches pass but the whole fails --> Step2
+```
+
+<span style="color:#d62728">**Critical rule**</span>: <span style="color:#d62728">if every branch passes its own bench but the integrated whole still fails the big task, the decomposition itself is wrong — go back to step 2, not to step 3</span>. (This is exactly what happened to us — see §3.4.)
+
+### 3.2 Six sub-validations at integration time
+
+```mermaid
+flowchart LR
+    Whole["Integrated agent"]
+    Whole --> A["3.2.1 Ablation study<br/>drop one module,<br/>measure delta"]
+    Whole --> B["3.2.2 Bottleneck table<br/>categorise +<br/>count failure causes"]
+    Whole --> C["3.2.3 Local performance preserved?<br/>does the module still<br/>pass its bench in production?"]
+    Whole --> D["3.2.4 Interface degradation<br/>A alone, A+B, A+B+C ...<br/>each pipe stage clean?"]
+    Whole --> E["3.2.5 Replacement test<br/>swap module with a<br/>deterministic stub"]
+    Whole --> F["3.2.6 Perf/complexity ratio<br/>contribution / cost"]
+```
+
+| # | Test | What it answers | What it cannot answer |
+|---|---|---|---|
+| 3.2.1 | <span style="color:#1f77b4">**Ablation study**</span> | If I drop module X, how much does the whole drop? | Whether X is correct in isolation (X may be wrong but the system compensates). |
+| 3.2.2 | <span style="color:#1f77b4">**Bottleneck contribution table**</span> | Among all the failures, which root cause is most common? Where do I get the most ROI? | Whether fixing the top one removes the others (sometimes one cause masks another). |
+| 3.2.3 | <span style="color:#1f77b4">**Local performance preserved**</span> | When the module runs inside the integrated agent, does it still hit its bench-time accuracy? | What's degrading it. |
+| 3.2.4 | <span style="color:#1f77b4">**Interface degradation**</span> | A alone → A+B → A+B+C. Does A's output still let B work? Does B's output still let C work? | Whether A, B, or C themselves are broken. |
+| 3.2.5 | <span style="color:#1f77b4">**Replacement test**</span> | Swap module X with a hand-written deterministic stub. Does the rest of the system function? | What X has to contribute that the stub cannot. |
+| 3.2.6 | <span style="color:#1f77b4">**Performance / complexity ratio**</span> | Per line of code or per training-hour, which module yields the most delta? | Long-term value (cheap modules may saturate fast). |
+
+### 3.3 The branch-validation rule we kept getting wrong
+
+When we validated a branch with synthetic data, the bench input was sanitized:
+- We gave the model a hand-written hypothesis like `"align two yellow squares vertically in the left column"`.
+- We gave fixed letter mapping `A: ACTION1, B: ACTION2, C: ACTION3, D: ACTION4`.
+- We gave a clean `(current_pos, target_pos)` pair.
+
+But in the production agent the model receives:
+- A hypothesis the previous Reflection step wrote — which may be in a different dialect.
+- A shuffled letter mapping `A: ACTION3, B: ACTION1, C: ACTION6` that changes every step.
+- An estimated `(pos, target)` from a fragile chain of inferences.
+
+<span style="color:#d62728">**Rule**</span>: <span style="color:#d62728">branch validation passes only if the bench input distribution matches the production input distribution</span>. Synthetic data is fine for capability lower-bound, but the final validation must use inputs sampled from the integrated production flow. If the synthetic bench says PASS but the production version fails on the same task, the synthetic bench was incomplete — the module's PASS definition is incomplete and must be re-defined.
+
+### 3.4 How this caught our 0/5 wins
+
+We followed the loop:
+1. Decomposed into 7 modules (Perception → ... → K=3 Candidates).
+2. Validated each branch with a synthetic bench. <span style="color:#1f77b4">All 6 LLM-dependent modules passed</span>.
+3. Integrated.
+4. <span style="color:#d62728">5 / 5 wins = 0</span>.
+
+By rule 3.3 → go back to step 2. We then re-ran step 3 with the production-equivalent input. <span style="color:#d62728">Two modules failed</span>:
+- Module 4 (Action Selection): synthetic bench gave a hypothesis with direction; production gives `align_any` with no direction. The module was never tested on the actual production distribution.
+- Module 5 (force_cot Prompt): synthetic bench gave a fixed letter map; production shuffled them dynamically. The module was tested on the wrong input distribution.
+
+This is bug BUG-3 in §8 — the methodological root cause behind the surface bugs.
+
+---
+
+## 4. Validated modules — kept and dropped
+
+After the 5-phase ablation each module is in one of two camps.
+
+### 4.1 Validated KEEP (carry these into production)
+
+| Module / mechanism | Evidence | Status |
+|---|---|---|
+| <span style="color:#1f77b4">scipy perception (Module 0)</span> | 100% vs VLM 0% on per-frame object extraction | ✅ PASS |
+| <span style="color:#1f77b4">parser (Module 2 `goal_evaluator`)</span> | T-GOAL bench 83% vs LLM-judge 68% (recall on TRUE 100% vs 22%, 1.25M× faster) | ✅ PASS |
+| <span style="color:#1f77b4">parser vocab extension</span> (edge / center / align_any / reach / match patterns) | 100% coverage of production hypothesis dialect observed in det_goal v2 + smoke 3 + Phase 4 | ✅ PASS |
+| <span style="color:#1f77b4">Force-reject mechanism (Module 3)</span> | smoke 3 trace shows Reflection truly rewrites hypothesis after orchestrator clears it | ✅ PASS (reject correctness pending human label) |
+| <span style="color:#1f77b4">Hallucination detection</span> (Module 3 sub-rule: parser kind known + verdict=None + frame_objects ≠ ∅ → hypothesis names entities not in frame) | smoke 2-3: 18/20 triggers cleaned hallucinated-colour hypotheses | ✅ PASS |
+| <span style="color:#1f77b4">Reflection token-budget fix</span> | reflection JSON output went 0/100 → 100/100 from raising `--max-new-tokens-reflection` 250 → 1024 | ✅ PASS |
+| <span style="color:#1f77b4">Step-budget pooling</span> (total step cap across rounds, `--max-actions-total`) | Phase 4 ar25: round 0 ended at step 85 (GAME_OVER) → round 1 continued to use remaining budget; would have wasted those steps under the old rigid `--rounds N × --max-actions M` scheme | ✅ PASS |
+| <span style="color:#1f77b4">action_proposer K=3 candidates (Module 6)</span> | Phase 3 ablation: V4 baseline 11% → V4 + propose 86%, the **single critical module among the legacy four** | ✅ PASS (+75pp) |
+| <span style="color:#1f77b4">Reflection schema validation (wide)</span> | Phase 1B: parser-based validator dropped invalid hypotheses before they polluted Knowledge | ✅ PASS |
+
+### 4.2 Validated DROP (legacy modules that contribute nothing on their own)
+
+| Module / mechanism | Evidence | Status |
+|---|---|---|
+| <span style="color:#d62728">click_targets bandit</span> | cross-validation against production trace: 0 / 5 ACTION6 clicks hit a useful object. Phase 3 ablation: +0pp on top of V4 baseline | ❌ DROP |
+| <span style="color:#d62728">action_semantics written by LLM</span> | Phase 3 ablation: +0pp on its own. Only indirectly useful via action_proposer's "known-good" candidate slot, but that slot is itself a source of ACTION1 spam | ❌ DROP |
+| <span style="color:#d62728">Hard rules R1 / R4 / R5 / R6 / R7</span> | Phase 3 ablation: +0pp on their own (R3 forced-explore in the action agent kept as a safety net) | ❌ DROP |
+| <span style="color:#d62728">R2 action mask</span> | not individually ablated; kept off in V4 to match the rest of the legacy umbrella | ❌ DROP (for now) |
+| <span style="color:#d62728">8-block prompt extras</span> (LOW-PRIORITY, TEXTURE, etc) | their length pushes the prompt over the budget; `/think` chain fails to close in production with them on | ❌ DROP |
+
+---
+
+## 5. Why **not** BFS / DFS / A\* as the primary action policy
 
 A natural-looking alternative is: encode the grid as a graph, run BFS or A\* to a goal state, emit the action sequence. We do **not** use this as the primary policy. Four reasons:
 
@@ -82,7 +182,7 @@ A natural-looking alternative is: encode the grid as a graph, run BFS or A\* to 
 
 ---
 
-## 4. How RL fits in (later)
+## 6. How RL fits in (later)
 
 A parked RL line exists in the codebase: GRPO + intrinsic F1 reward (the cell-level prediction error between the agent's predicted change set and the actual change set after `env.step`). 10 unit tests pass; no real training has been run.
 
@@ -114,7 +214,7 @@ For each module the reward shaping is:
 
 ---
 
-## 5. Current validated results
+## 7. Current validated results
 
 ### 5.1 Per-module status (2026-05-19)
 
@@ -162,7 +262,7 @@ V4 + propose (this report)                       ──────  82%    0/5 
 
 ---
 
-## 6. Open bugs blocking 0 → 1+ wins
+## 8. Open bugs blocking 0 → 1+ wins
 
 ### BUG-1 (fatal): Hypothesis is non-directional
 
@@ -183,7 +283,7 @@ V4 + propose (this report)                       ──────  82%    0/5 
 
 ---
 
-## 7. Charts / data sources
+## 9. Charts / data sources
 
 We have collected the raw data; chart PNGs are a P2 todo. Pointers below let anyone reproduce or visualise:
 
@@ -201,7 +301,7 @@ We have collected the raw data; chart PNGs are a P2 todo. Pointers below let any
 
 ---
 
-## 8. Next steps (priority ordered)
+## 10. Next steps (priority ordered)
 
 | Priority | Action | What it fixes |
 |---|---|---|
@@ -218,7 +318,7 @@ We have collected the raw data; chart PNGs are a P2 todo. Pointers below let any
 
 ---
 
-## 9. Status vs goal
+## 11. Status vs goal
 
 - **Current**: V4 + propose, **82% mean change_rate on 5 G_base games, 0 / 5 wins**.
 - **Gap to community SOTA (Symbolica Agentica 36% demo wins)**: still 36 percentage points of wins.
@@ -226,7 +326,7 @@ We have collected the raw data; chart PNGs are a P2 todo. Pointers below let any
 
 ---
 
-## 10. One-page summary
+## 12. One-page summary
 
 - **What we are**: an ARC-AGI-3 agent that infers, executes, and self-corrects on never-before-seen 64×64 grid puzzles.
 - **What's working**: deterministic perception (Module 0), parser-based goal recognition (Module 2, 83% bench), action_proposer for exploration (Module 6, +75pp), the basic self-rejection mechanism when a hypothesis is parseable but does not match the frame (Module 3 force-reject).
