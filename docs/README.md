@@ -2,7 +2,7 @@
 
 > 10 分钟看完知道现状。状态码 🟢 当前活、🟡 参考、⚫ 历史。
 
-最近更新: 2026-05-19 (v4 clean_baseline 5-phase 完成: V4+propose mean 82% change_rate, 0/5 wins)
+最近更新: 2026-05-19 morning (v4 + per-module re-validation: bench-vs-production distribution shift 暴露两个 hidden bug)
 
 > **昨晚跨分支汇报**: [`tonight_summary.md`](./tonight_summary.md) + [`figures/tonight_summary.png`](./figures/tonight_summary.png)
 
@@ -30,15 +30,15 @@
 
 ---
 
-## 2. 当前分支状态(2026-05-17 14:55)
+## 2. 当前分支状态(2026-05-19 morning)
 
 | 分支 | 状态 | 顶端 commit | 在做什么 |
 |---|---|---|---|
 | `main` | 🟢 主线 | `e07e7d1` (2026-05-16) | v3.2 + mask + Knowledge + click_targets。**没有任何 push/merge 发生**;所有新工作都在 feature 分支 |
-| `feat-2026-05-16-v0-action_proposer` | 🟢 **活跃** | (本分支)`b29mzqh3m` 跑中 | 包含 action_proposer + model_bench + SmolLM3 5×2×300 + CoT 1×2×100 跑中 |
-| `feat-2026-05-17-v0-subtask-T-NAV-1` | 🟢 已 push | `c61f309` | 5 subtask 验证 + force_cot A/B 全跑完。终判 2 PASS / 3 FAIL |
+| `feat-2026-05-16-v0-action_proposer` | 🟡 完成,本地 | `b9e2e87` | 包含 action_proposer + model_bench + SmolLM3 5×2×300 + CoT 1×2×100 |
+| `feat-2026-05-17-v0-subtask-T-NAV-1` | 🟢 已 push origin | `c61f309` | 5 subtask 验证 + force_cot A/B 全跑完。终判 2 PASS / 3 FAIL |
 | `feat-2026-05-18-v0-det_goal_plus_force_cot` | 🟢 完成,本地 | `12fd46c` | det_goal + force_cot + goal_judge A/B + parser 多次扩展。多版 smoke 暴露 LLM 不听 advisory prompt + action_semantics propagation bug |
-| `feat-2026-05-19-v0-v4_clean_baseline` | 🟢 **当前** | (今早最新)| **5-phase ablation 完成**:V4+propose mean change_rate **82%**(+18pp vs SmolLM3 baseline),5 game 0/5 wins;action_proposer 是 v3.2 旧模块唯一关键 |
+| `feat-2026-05-19-v0-v4_clean_baseline` | 🟢 **当前** | `ff01d1b` | **5-phase ablation + per-module re-validation**:V4+propose mean change_rate **82%**(+18pp);action_proposer 是唯一关键;模块重审暴露 **2 hidden bugs** (hypothesis 无方向 + reasoning↔action 49% 脱节);**等用户标 Module 1+4** |
 | `docs-reorg` | 🟡 等合 | `181d0b6` (2026-05-16) | 文档体系迁移,昨天写完 |
 | `feat-2026-05-16-v01-predictor` | ❌ 不合 | `722db78` (2026-05-16) | CNN OOD AUC 0.16 失败结论存档 |
 | `feat-2026-05-16-v0-grpo_train` | ⏳ Phase 0 | `11ed21f` (2026-05-16) | rollout_wrapper + 10 unit tests pass。真训练未跑 |
@@ -47,21 +47,37 @@
 
 ---
 
-## 3. 当前方向(2026-05-17)
+## 3. 当前方向(2026-05-19)
 
-**今天重大发现**:SmolLM3 +17pp 优势**全部来自 reasoning chain (CoT)**。生产用 `/no_think` 模式 → SmolLM3 **55.2% = Qwen baseline**。但 SmolLM3 5×2×300 仍拿 64% mean change_rate(vs Qwen 5-8%),所以**真正起作用的不是空间推理而是 action_proposer + Knowledge + instruction following 的协同**。
+**v4 5-phase 跑完 + per-module re-validation 揭示方法学 gap**:之前 6 个 "validated" 模块用的都是 proxy metric (change_rate / count / diversity),不是模块自身 PASS 定义。用真定义重审 Phase 4 5 game trace 暴露 **2 hidden bugs**:
 
-按 ROI 排的下一步:
+1. **Hypothesis 无方向** — Reflection 在 `/no_think` 模式下偏好 "match X with Y" 句式(0/794 步写了 directional kind)。Action 拿到的 hypothesis **没有方向信号** → 没法朝目标走
+2. **reasoning ↔ action 49% LLM 脱节** — model reasoning 说选 ACTION X,但实际 output "choice: Y" 选了别的字母(orch_override 0 次,纯 LLM 字母映射 confusion)
 
-1. **CoT 1×2×100 ar25 实测中** — 验证 CoT 模式实际通关能力(慢 10×,但精度高)
-2. **subtask 拆分**(用户建议,关键) — 把「通关」拆成 7 个可测的小任务(T-NAV-1..3, T-SEL-1..2, T-GOAL, T-RETRY),每个一个分支
-3. **Qwen+propose 5×2×300 对照** — 确认 SmolLM3 优势是模型还是 action_proposer 结构
+**共同根因**: bench 用 sanitized prompt(固定 letter mapping + 给定 hypothesis),production 用动态 shuffle + 自由 Reflection 输出 — **bench-vs-production distribution shift**。
+
+按 ROI 排下一步:
+
+1. **等用户标 Module 1+4**(`docs/project/2026-05-19-v0-v4_clean_baseline/annotation_request.md`)→ 算 6 模块 PASS rate 完整表
+2. **`--validate-hypothesis-schema strict`** 重跑 5 game — 强制 Reflection 写 directional kind,看 wins 是否打开
+3. **action_proposer letter mapping 固定**(A→ACTION1 永远),不 shuffle — 消除 LLM 字母 confusion
+4. 加 **T-DIALECT bench**(Reflection 自由写时 kind 分布)+ **T-MAPPING bench**(动态 letter shuffle 跟踪)— 补 bench 跟 production 的距离
 
 ---
 
 ## 4. 验证结果汇总
 
-### 🔑 关键新发现 (2026-05-19,overnight v4 pipeline)
+### 🔑 关键新发现 (2026-05-19,overnight v4 + 方法学修正)
+
+#### 🚨 Hidden bugs(用户提的 per-module 重审才暴露)
+
+| 发现 | 来源 |
+|---|---|
+| **Hypothesis 0/794 步写 directional kind** —— Reflection 在 /no_think 全写 align/match 无方向句式 → Action 无法朝目标走 | module_validation §2 |
+| **reasoning ↔ action 49% pure LLM disconnect** —— model 说"选 ACTION X" 实际 output "choice: Y" 选了别的字母,orch_override 0 次 | module_validation §3 |
+| **方法学错误**:之前 6 模块都用 proxy metric 测,不是 PASS 真定义 → bench 跟 production 严重 distribution shift | module_validation §1 |
+
+#### 📊 v4 5-phase 成果
 
 | 发现 | 来源 |
 |---|---|
@@ -71,7 +87,7 @@
 | **`/think` 在 production prompt 下 chain 仍 0/10 闭合** —— 即使 V4 短化 prompt | v4_clean_baseline Phase 1 |
 | **Parser "match X with Y" 模式 (Phase 1B 新发现)** —— Reflection /no_think 模式喜欢用这种方言 | Phase 1B |
 | **Step-budget pooling 工作** —— round 早终止后续 round 继续耗用预算 | Phase 0/4 |
-| **5 game G_base 全 0/5 wins** —— change_rate 提升不等于通关,真正 gap 在 goal-directed planning | Phase 4 §7 |
+| **5 game G_base 全 0/5 wins** —— change_rate 提升不等于通关,真正 gap 在上 2 个 hidden bug | Phase 4 §7 + module_validation |
 
 ### 🔑 早前发现 (2026-05-18)
 
@@ -199,17 +215,25 @@ docs/
 
 ---
 
-### 2026-05-19 (latest) — 🟢 v4 clean_baseline 5-phase pipeline — `docs/project/2026-05-19-v0-v4_clean_baseline/`
+### 2026-05-19 morning (latest) — 🟢 v4 + per-module re-validation — `docs/project/2026-05-19-v0-v4_clean_baseline/`
 
 - **分支**: `feat-2026-05-19-v0-v4_clean_baseline`(本地)
-- **关键 commits**: `57d5d5a`(CLI flags)→ `eaeb89b`(docs)→ `823e7cc`(parser match)→ `017e2f5`(Phase 1)→ `f4758f0`(Phase 2)→ `d114b1f`(Phase 3)→ Phase 4 + final pending
-- **一句话**: 把 v3.2 旧模块全砍后逐个 ablation,**`action_proposer` 是唯一关键模块**(+75pp);V4+propose 5 game mean change_rate 82%(超 SmolLM3 5×2×300 baseline +18pp),但 **0/5 wins**(change_rate 不等于通关)
-- **架构含义**: production 推荐配置 = `V4 minimal + --propose on`(砍 click_targets / action_semantics / hard_rules)。下一个 gap 是 goal-directed planning,不在反思层
-- **下一步**: trace 分析 +0 通关诊断;trying `--validate-hypothesis-schema strict` 看 hypothesis 收紧是否帮助
+- **关键 commits**: `57d5d5a`(CLI flags)→ `eaeb89b`(docs)→ `823e7cc`(parser match)→ `017e2f5`(Phase 1)→ `f4758f0`(Phase 2)→ `d114b1f`(Phase 3)→ `bb1c8f7`(Phase 4 + final)→ `ff01d1b`(per-module re-validation)
+- **5-phase 结果**:
+  - Phase 1: `/no_think` wins(`/think` chain 0/10 闭合)
+  - Phase 2: V4 minimal ar25 200 step 退化到 11% → 触发反向 Phase 3
+  - Phase 3: ablation 4 模块,**action_proposer 唯一关键 +75pp**
+  - Phase 4: V4+propose 5 game mean change_rate **82%**(+18pp vs baseline),0/5 wins
+- **方法学修正(用户 morning 提)**: 之前 "validated 6 modules" 用 proxy metric。用 PASS 真定义重审 Phase 4 trace,**发现 2 hidden bugs**:
+  - **Hypothesis 无方向**: 0/794 步是 directional kind,全 align/match
+  - **reasoning↔action 49% LLM 脱节**: 字母 mapping confusion,orch_override 0 次贡献
+- **共同根因**: bench 用 sanitized prompt(固定 letter / 给定 hypothesis),production 用动态 shuffle / 自由 Reflection 输出 → **distribution shift**
+- **下一步**: 等用户标 Module 1+4(`annotation_request.md`),然后试 `--validate-hypothesis-schema strict` + 固定 letter mapping
 - **关键 outputs**:
   - `outputs/v4_phase4_g{1..5}_*/` 5 game runs
   - `outputs/v4_ablate_*/` Phase 3 ablation
-  - `outputs/v4_phase2_baseline_s42_*` V4 minimal (退化 11%)
+  - `docs/project/2026-05-19-v0-v4_clean_baseline/module_validation.md` 重审报告
+  - `docs/project/2026-05-19-v0-v4_clean_baseline/annotation_request.md` 待用户填
 
 ---
 
