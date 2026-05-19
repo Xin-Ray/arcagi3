@@ -289,3 +289,23 @@ def test_v2_production_hypothesis_coverage():
     """Parser must handle all 9 distinct v2 round 0 hypotheses."""
     unparsed = [h for h in V2_HYPOTHESES if parse_goal_hypothesis(h) is None]
     assert unparsed == [], f"Unparsed: {unparsed}"
+
+
+# ── v2 (smoke 3 finding 2026-05-18): "reach the X edge" verb ───────────
+
+SMOKE3_HYPOTHESES = [
+    "all yellow objects must reach the bottom edge of the grid",
+    "reach the left edge",
+    "reaching the right edge",
+    "yellow must reach the center",
+    "must reach the bottom edge",
+]
+
+
+def test_smoke3_reach_the_edge_patterns():
+    for h in SMOKE3_HYPOTHESES:
+        pred = parse_goal_hypothesis(h)
+        assert pred is not None, f"failed to parse {h!r}"
+        assert pred.kind in ("move_to_row", "move_to_col",
+                             "move_to_center"), \
+            f"unexpected kind {pred.kind} for {h!r}"

@@ -302,18 +302,30 @@ def parse_goal_hypothesis(text: str) -> Optional[GoalPredicate]:
     colors = _extract_colors(text)
 
     # 1) "to the {top|bottom|left|right} edge" - the most common
-    # production pattern (v2 round 0 trace step 0, 15)
+    # production pattern (v2 round 0 trace step 0, 15; smoke 3 step 2
+    # extended to "reach the X edge" / "must X the X edge" forms).
+    _EDGE_PREP_VERBS = (
+        "to the", "to",
+        "toward the", "toward", "towards the", "towards",
+        "reach the", "reach", "reaches the", "reaches",
+        "reaching the", "reaching",
+        "at the", "against the",
+        "into the", "onto the",
+        "must reach the", "should reach the",
+    )
     for keyword, (kind, target) in _EDGE_TARGETS.items():
-        if f"to the {keyword}" in low or f"to {keyword}" in low \
-                or f"toward the {keyword}" in low \
-                or f"towards the {keyword}" in low:
-            return GoalPredicate(
-                kind=kind, colors=colors, target=target,
-                min_count=1, raw=text)
+        for prep in _EDGE_PREP_VERBS:
+            if f"{prep} {keyword}" in low:
+                return GoalPredicate(
+                    kind=kind, colors=colors, target=target,
+                    min_count=1, raw=text)
 
     # 2) "to the center" / "towards the center" - production pattern
-    # (v2 round 0 trace step 47, 56, 60, 75, 79)
-    if re.search(r"\b(?:to|toward|towards)\s+(?:the\s+)?(?:center|middle)\b", low):
+    # (v2 round 0 trace step 47, 56, 60, 75, 79; also "reach the
+    # center" / "in the center" / "at the center")
+    if re.search(
+        r"\b(?:to|toward|towards|reach|reaches|reaching|at|in|into|onto)"
+        r"\s+(?:the\s+)?(?:center|middle)\b", low):
         return GoalPredicate(
             kind="move_to_center", colors=colors, target=None,
             min_count=1, raw=text)

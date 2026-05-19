@@ -707,6 +707,7 @@ def run_one_game(
             # bench showed is near-random at 33.7% long_acc).
             goal_achieved_det: Optional[bool] = None
             goal_pred_kind: str = ""
+            goal_pred_colors: tuple = ()
             try:
                 _achieved, _pred = evaluate_goal(
                     knowledge.goal_hypothesis,
@@ -714,12 +715,13 @@ def run_one_game(
                 )
                 if _pred is not None:
                     goal_pred_kind = _pred.kind
+                    goal_pred_colors = _pred.colors
                 goal_achieved_det = _achieved
             except Exception as _e:
                 print(f"[round {r}] goal_evaluator failed at step {step}: {_e}",
                       file=sys.stderr)
 
-            # Decide what GOAL CHECK signal to add to the alert. Two
+            # Decide what GOAL CHECK signal to add to the alert. Three
             # interesting cases:
             #   (a) achieved=True but env state != WIN  ->  hypothesis is
             #       wrong (LLM thought goal was X, agent reached X, env
@@ -727,6 +729,10 @@ def run_one_game(
             #       and tell next Action step
             #   (b) achieved=False  ->  positive ground truth, surface to
             #       Action so it doesn't get confused by stale LLM signal
+            #   (c) NEW 2026-05-18: pred parsed OK but verdict=None means
+            #       hypothesis names entities not in frame (hallucinated
+            #       colors / counts). This is itself evidence the
+            #       hypothesis is INVALID -> reject.
             goal_check_block = ""
             if goal_achieved_det is True and latest.state != GameState.WIN:
                 goal_check_block = (
@@ -743,8 +749,38 @@ def run_one_game(
                     f"[GOAL CHECK] Deterministic check ({goal_pred_kind}) "
                     f"says hypothesis NOT met yet. Continue toward target."
                 )
-            # If goal_achieved_det is None (unparseable / not enough info),
-            # we say nothing -- LLM keeps its own judgment.
+            elif (goal_pred_kind and goal_achieved_det is None
+                    and refl_frame_objs):
+                # NEW 2026-05-18 (smoke 2 finding): parser couldn't
+                # evaluate because frame doesn't have enough matching
+                # objects. Hypothesis names hallucinated entities.
+                #
+                # Smoke 2 showed: just adding an advisory alert was
+                # IGNORED by Reflection -- it kept writing the same bad
+                # hypothesis 18/20 steps in a row. Per CLAUDE.md
+                # "prompt only advises, orchestrator enforces", we now
+                # FORCIBLY clear the hypothesis + push to rejected_goals
+                # so Reflection cannot re-use it (sentinel filter R1 +
+                # R5 will reject re-writes of the same string).
+                actual_colors = sorted({getattr(o, "color_name", "?")
+                                        for o in refl_frame_objs})
+                bad_hyp = knowledge.goal_hypothesis
+                goal_check_block = (
+                    f"[GOAL CHECK] Last hypothesis "
+                    f"({list(goal_pred_colors)!r}) hallucinated entities "
+                    f"not in frame. Actual colors: {actual_colors[:5]}. "
+                    f"HYPOTHESIS REJECTED -- propose a NEW one using "
+                    f"only the actual colors above."
+                )
+                # Direct field reset bypassing the sentinel filter
+                # (which would reject an empty string set via delta).
+                if bad_hyp and bad_hyp not in knowledge.rejected_goals:
+                    # Trim to fit _SHORT_TEXT_CAP indirectly
+                    knowledge.rejected_goals = (
+                        knowledge.rejected_goals + [bad_hyp])[-10:]
+                knowledge.goal_hypothesis = ""  # force Reflection to rewrite
+                knowledge = knowledge.merged_with_delta(
+                    {"goal_confidence_update": "low"})
 
             # Compose final alert: GOAL CHECK first (deterministic signals
             # have priority over LLM-derived ones), then the unified alert.
