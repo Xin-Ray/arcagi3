@@ -1,0 +1,178 @@
+{
+  "ar25": {
+    "hyps_for_module1": [
+      {
+        "round": "round_01",
+        "step": 69,
+        "hyp": "match the moving purple 1x1 (obj_008) to the static purple target"
+      },
+      {
+        "round": "round_01",
+        "step": 81,
+        "hyp": "match the moving purple 1x1s to the static purple targets"
+      },
+      {
+        "round": "round_01",
+        "step": 83,
+        "hyp": "match the moving purple 1x1 (obj_018) with the static purple target"
+      }
+    ],
+    "rejected_for_module4": [
+      {
+        "round": "round_00",
+        "hyp": "match the moving blue square to the static blue target"
+      },
+      {
+        "round": "round_00",
+        "hyp": "match the moving yellow square to the static yellow target"
+      },
+      {
+        "round": "round_00",
+        "hyp": "match the moving yellow 1x1 (obj_000) to the static yellow target"
+      },
+      {
+        "round": "round_00",
+        "hyp": "match the moving yellow size=45 object to the static yellow target"
+      },
+      {
+        "round": "round_00",
+        "hyp": "match the moving yellow size=45 object (obj_0) to the static yellow target"
+      },
+      {
+        "round": "round_01",
+        "hyp": "match the moving purple 1x1 (obj_008) to the static purple target"
+      },
+      {
+        "round": "round_01",
+        "hyp": "match the moving purple 1x1 (obj_010) to the static purple target"
+      },
+      {
+        "round": "round_01",
+        "hyp": "match the moving yellow size=18 object (obj_017) to the static yellow target"
+      }
+    ],
+    "first_step_png": "outputs\\v4_phase4_g1_ar25_s42_20260519-053015\\round_00\\step_0000.png",
+    "mid_step_png": "outputs\\v4_phase4_g1_ar25_s42_20260519-053015\\round_00\\step_0050.png"
+  },
+  "bp35": {
+    "hyps_for_module1": [
+      {
+        "round": "round_00",
+        "step": 2,
+        "hyp": "match every gray, green, maroon, navy, and purple object with a corresponding static target"
+      },
+      {
+        "round": "round_00",
+        "step": 7,
+        "hyp": "match every purple object with a corresponding static target"
+      },
+      {
+        "round": "round_01",
+        "step": 1,
+        "hyp": "match every rose with a corresponding static target"
+      }
+    ],
+    "rejected_for_module4": [
+      {
+        "round": "round_00",
+        "hyp": "match every red dot with a red target square"
+      },
+      {
+        "round": "round_00",
+        "hyp": "match the moving blue square to the static blue target"
+      },
+      {
+        "round": "round_00",
+        "hyp": "match every gray, green, maroon, navy, and purple object with a corresponding static target"
+      },
+      {
+        "round": "round_00",
+        "hyp": "match every purple object with a corresponding static target"
+      },
+      {
+        "round": "round_00",
+        "hyp": "match the moving blue square (obj_174) with the static blue target"
+      }
+    ],
+    "first_step_png": "outputs\\v4_phase4_g2_bp35_s42_20260519-062440\\round_00\\step_0000.png",
+    "mid_step_png": "outputs\\v4_phase4_g2_bp35_s42_20260519-062440\\round_00\\step_0050.png"
+  },
+  "cd82": {
+    "hyps_for_module1": [
+      {
+        "round": "round_00",
+        "step": 1,
+        "hyp": "align the two yellow 1x1s (obj_001 and obj_000) vertically in the left column"
+      },
+      {
+        "round": "round_00",
+        "step": 4,
+        "hyp": "align the two yellow 1x1s vertically in the left column"
+      },
+      {
+        "round": "round_00",
+        "step": 37,
+        "hyp": "align the two yellow 1x1s (obj_000 and obj_001) vertically in the left column"
+      },
+      {
+        "round": "round_01",
+        "step": 0,
+        "hyp": "align the two yellow 1x1s (obj_000 and obj_001) vertically in the left column"
+      }
+    ],
+    "rejected_for_module4": [
+      {
+        "round": "round_00",
+        "hyp": "align the two yellow 1x1s (obj_001 and obj_000) vertically in the left column"
+      },
+      {
+        "round": "round_00",
+        "hyp": "align the two yellow 1x1s vertically in the left column"
+      }
+    ],
+    "first_step_png": "outputs\\v4_phase4_g3_cd82_s42_20260519-065756\\round_00\\step_0000.png",
+    "mid_step_png": "outputs\\v4_phase4_g3_cd82_s42_20260519-065756\\round_00\\step_0050.png"
+  },
+  "cn04": {
+    "hyps_for_module1": [
+      {
+        "round": "round_00",
+        "step": 0,
+        "hyp": "move the yellow 1x1 (obj_002) to the bottom edge"
+      }
+    ],
+    "rejected_for_module4": [
+      {
+        "round": "round_00",
+        "hyp": "move the yellow 1x1 (obj_002) to the bottom edge"
+      },
+      {
+        "round": "round_00",
+        "hyp": "match the moving blue square to the static blue target"
+      },
+      {
+        "round": "round_01",
+        "hyp": "align the two red squares vertically in the left column"
+      }
+    ],
+    "first_step_png": "outputs\\v4_phase4_g4_cn04_s42_20260519-080429\\round_00\\step_0000.png",
+    "mid_step_png": "outputs\\v4_phase4_g4_cn04_s42_20260519-080429\\round_00\\step_0050.png"
+  },
+  "dc22": {
+    "hyps_for_module1": [
+      {
+        "round": "round_00",
+        "step": 0,
+        "hyp": "align the two red squares vertically in the left column"
+      },
+      {
+        "round": "round_01",
+        "step": 0,
+        "hyp": "align the two red squares vertically in the left column"
+      }
+    ],
+    "rejected_for_module4": [],
+    "first_step_png": "outputs\\v4_phase4_g5_dc22_s42_20260519-084820\\round_00\\step_0000.png",
+    "mid_step_png": "outputs\\v4_phase4_g5_dc22_s42_20260519-084820\\round_00\\step_0050.png"
+  }
+}

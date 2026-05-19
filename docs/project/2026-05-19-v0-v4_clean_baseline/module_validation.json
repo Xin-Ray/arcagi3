@@ -1,0 +1,292 @@
+{
+  "ar25": {
+    "game": "ar25",
+    "dir": "v4_phase4_g1_ar25_s42_20260519-053015",
+    "module_3": {
+      "total_steps": 172,
+      "n_directional_hypothesis": 0,
+      "n_action_directional": 0,
+      "n_aligned": 0,
+      "n_misaligned": 0,
+      "alignment_rate": 0.0,
+      "examples_misaligned": []
+    },
+    "module_5": {
+      "total_steps": 172,
+      "n_has_reasoning": 104,
+      "n_reasoning_mentions_action": 97,
+      "n_match": 45,
+      "n_mismatch": 52,
+      "match_rate": 0.4639175257731959,
+      "examples_mismatch": [
+        {
+          "step": 2,
+          "reasoning": "The reflection alert indicates the previous hypothesis about the color blue was incorrect. The actual colors present are",
+          "reasoning_mention": "ACTION2",
+          "action_chosen": "ACTION5"
+        },
+        {
+          "step": 8,
+          "reasoning": "The goal_hypothesis suggests moving toward the top edge, and the active object #0 is already at the top. Since trying AC",
+          "reasoning_mention": "ACTION7",
+          "action_chosen": "ACTION2"
+        },
+        {
+          "step": 11,
+          "reasoning": "The goal_hypothesis suggests moving toward the top edge, and ACTION3 has been used to move an object UP 3 cells previous",
+          "reasoning_mention": "ACTION3",
+          "action_chosen": "ACTION1"
+        },
+        {
+          "step": 14,
+          "reasoning": "The goal is to move the yellow 1x1 (obj_000) towards the top edge. ACTION4 has been used before to move an object left, ",
+          "reasoning_mention": "ACTION4",
+          "action_chosen": "ACTION3"
+        },
+        {
+          "step": 16,
+          "reasoning": "The goal_hypothesis suggests moving the yellow 1x1 (obj_000) towards the static yellow target. The recent actions on obj",
+          "reasoning_mention": "ACTION7",
+          "action_chosen": "ACTION5"
+        }
+      ]
+    },
+    "module_6": {
+      "total_steps": 172,
+      "n_letter_choice": 77,
+      "letter_choice_rate": 0.4476744186046512
+    }
+  },
+  "bp35": {
+    "game": "bp35",
+    "dir": "v4_phase4_g2_bp35_s42_20260519-062440",
+    "module_3": {
+      "total_steps": 72,
+      "n_directional_hypothesis": 0,
+      "n_action_directional": 0,
+      "n_aligned": 0,
+      "n_misaligned": 0,
+      "alignment_rate": 0.0,
+      "examples_misaligned": []
+    },
+    "module_5": {
+      "total_steps": 72,
+      "n_has_reasoning": 58,
+      "n_reasoning_mentions_action": 50,
+      "n_match": 34,
+      "n_mismatch": 16,
+      "match_rate": 0.68,
+      "examples_mismatch": [
+        {
+          "step": 4,
+          "reasoning": "The goal is to match every rose with a corresponding static target. The active rose #183 is in the top-left, and the clo",
+          "reasoning_mention": "ACTION4",
+          "action_chosen": "ACTION6"
+        },
+        {
+          "step": 15,
+          "reasoning": "The goal is to match every purple object with a corresponding static target. The most unexplored action is ACTION4, whic",
+          "reasoning_mention": "ACTION4",
+          "action_chosen": "ACTION7"
+        },
+        {
+          "step": 16,
+          "reasoning": "ACTION4 has been tried 3x, with recent 3x no-op, but it's the only action with a history of movement (moved RIGHT 8 cell",
+          "reasoning_mention": "ACTION4",
+          "action_chosen": "ACTION3"
+        },
+        {
+          "step": 24,
+          "reasoning": "The goal is to match every purple object with a corresponding static target. The current state has purple objects (#172,",
+          "reasoning_mention": "ACTION3",
+          "action_chosen": "ACTION7"
+        },
+        {
+          "step": 26,
+          "reasoning": "ACTION4 has been tried 3 times, with 1x moving right 8 cells and 1x moving right 6 cells. It's been tried in the top-rig",
+          "reasoning_mention": "ACTION4",
+          "action_chosen": "ACTION3"
+        }
+      ]
+    },
+    "module_6": {
+      "total_steps": 72,
+      "n_letter_choice": 56,
+      "letter_choice_rate": 0.7777777777777778
+    }
+  },
+  "cd82": {
+    "game": "cd82",
+    "dir": "v4_phase4_g3_cd82_s42_20260519-065756",
+    "module_3": {
+      "total_steps": 200,
+      "n_directional_hypothesis": 0,
+      "n_action_directional": 0,
+      "n_aligned": 0,
+      "n_misaligned": 0,
+      "alignment_rate": 0.0,
+      "examples_misaligned": []
+    },
+    "module_5": {
+      "total_steps": 200,
+      "n_has_reasoning": 194,
+      "n_reasoning_mentions_action": 191,
+      "n_match": 95,
+      "n_mismatch": 96,
+      "match_rate": 0.4973821989528796,
+      "examples_mismatch": [
+        {
+          "step": 2,
+          "reasoning": "The goal is to align the two yellow 1x1s vertically in the left column. Trying ACTION4 could potentially move the object",
+          "reasoning_mention": "ACTION4",
+          "action_chosen": "ACTION5"
+        },
+        {
+          "step": 6,
+          "reasoning": "The goal is to align the two yellow 1x1s vertically in the left column. The active objects are obj_000 and obj_001, whic",
+          "reasoning_mention": "ACTION5",
+          "action_chosen": "ACTION1"
+        },
+        {
+          "step": 7,
+          "reasoning": "The goal is to align the two yellow 1x1s vertically in the left column. The active objects are obj_000 and obj_001, both",
+          "reasoning_mention": "ACTION4",
+          "action_chosen": "ACTION3"
+        },
+        {
+          "step": 9,
+          "reasoning": "The goal is to align the two yellow 1x1s vertically in the left column. The active objects are obj_000 and obj_001, both",
+          "reasoning_mention": "ACTION5",
+          "action_chosen": "ACTION4"
+        },
+        {
+          "step": 11,
+          "reasoning": "The goal is to align the two yellow 1x1s vertically in the left column. The active objects are obj_000 and obj_001, whic",
+          "reasoning_mention": "ACTION2",
+          "action_chosen": "ACTION6"
+        }
+      ]
+    },
+    "module_6": {
+      "total_steps": 200,
+      "n_letter_choice": 185,
+      "letter_choice_rate": 0.925
+    }
+  },
+  "cn04": {
+    "game": "cn04",
+    "dir": "v4_phase4_g4_cn04_s42_20260519-080429",
+    "module_3": {
+      "total_steps": 150,
+      "n_directional_hypothesis": 0,
+      "n_action_directional": 0,
+      "n_aligned": 0,
+      "n_misaligned": 0,
+      "alignment_rate": 0.0,
+      "examples_misaligned": []
+    },
+    "module_5": {
+      "total_steps": 150,
+      "n_has_reasoning": 130,
+      "n_reasoning_mentions_action": 130,
+      "n_match": 76,
+      "n_mismatch": 54,
+      "match_rate": 0.5846153846153846,
+      "examples_mismatch": [
+        {
+          "step": 1,
+          "reasoning": "The goal is to move the yellow 1x1 (obj_002) to the bottom edge. The current position of obj_002 is at (35, 38). The bot",
+          "reasoning_mention": "ACTION4",
+          "action_chosen": "ACTION3"
+        },
+        {
+          "step": 2,
+          "reasoning": "The goal is to move the yellow 1x1 (obj_002) to the bottom edge. Trying ACTION2 could potentially move the yellow 1x1, a",
+          "reasoning_mention": "ACTION2",
+          "action_chosen": "ACTION5"
+        },
+        {
+          "step": 9,
+          "reasoning": "The goal is to move the yellow 1x1 (obj_002) to the bottom edge. ACTION2 has been tried once and moved it DOWN 3 cells, ",
+          "reasoning_mention": "ACTION2",
+          "action_chosen": "ACTION5"
+        },
+        {
+          "step": 10,
+          "reasoning": "The goal is to move the light blue 1x1 (obj_002) to the bottom edge. ACTION2 has been tried once and moved DOWN 3 cells,",
+          "reasoning_mention": "ACTION2",
+          "action_chosen": "ACTION3"
+        },
+        {
+          "step": 13,
+          "reasoning": "ACTION5 has been used to move the UP+LEFT 6 cell(s) and UP+RIGHT 3 cell(s), which are more likely to move toward the goa",
+          "reasoning_mention": "ACTION5",
+          "action_chosen": "ACTION4"
+        }
+      ]
+    },
+    "module_6": {
+      "total_steps": 150,
+      "n_letter_choice": 118,
+      "letter_choice_rate": 0.7866666666666666
+    }
+  },
+  "dc22": {
+    "game": "dc22",
+    "dir": "v4_phase4_g5_dc22_s42_20260519-084820",
+    "module_3": {
+      "total_steps": 200,
+      "n_directional_hypothesis": 0,
+      "n_action_directional": 0,
+      "n_aligned": 0,
+      "n_misaligned": 0,
+      "alignment_rate": 0.0,
+      "examples_misaligned": []
+    },
+    "module_5": {
+      "total_steps": 200,
+      "n_has_reasoning": 197,
+      "n_reasoning_mentions_action": 186,
+      "n_match": 86,
+      "n_mismatch": 100,
+      "match_rate": 0.46236559139784944,
+      "examples_mismatch": [
+        {
+          "step": 0,
+          "reasoning": "The goal_hypothesis suggests moving toward the top edge, and ACTION2 is an untried action this round. It's reasonable to",
+          "reasoning_mention": "ACTION2",
+          "action_chosen": "ACTION1"
+        },
+        {
+          "step": 2,
+          "reasoning": "The goal is to align the two red squares vertically in the left column. The current positions of the red squares are at ",
+          "reasoning_mention": "ACTION2",
+          "action_chosen": "ACTION6"
+        },
+        {
+          "step": 3,
+          "reasoning": "The goal is to align the two red squares vertically in the left column. The active objects include #6 and #7, which are ",
+          "reasoning_mention": "ACTION4",
+          "action_chosen": "ACTION6"
+        },
+        {
+          "step": 4,
+          "reasoning": "The goal is to align the two red squares vertically in the left column. ACTION4 is untried this round, so it's a good ca",
+          "reasoning_mention": "ACTION4",
+          "action_chosen": "ACTION1"
+        },
+        {
+          "step": 5,
+          "reasoning": "The unexplored ACTION2 could provide a new direction to move toward aligning the two red squares vertically in the left ",
+          "reasoning_mention": "ACTION2",
+          "action_chosen": "ACTION4"
+        }
+      ]
+    },
+    "module_6": {
+      "total_steps": 200,
+      "n_letter_choice": 182,
+      "letter_choice_rate": 0.91
+    }
+  }
+}
