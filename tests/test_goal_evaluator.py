@@ -309,3 +309,23 @@ def test_smoke3_reach_the_edge_patterns():
         assert pred.kind in ("move_to_row", "move_to_col",
                              "move_to_center"), \
             f"unexpected kind {pred.kind} for {h!r}"
+
+
+# ── v3 (Phase 1B 2026-05-19): "match X with Y" pattern ─────────────────
+
+PHASE1B_HYPOTHESES = [
+    "match every yellow 1x1 with a yellow target square",
+    "match the moving blue square to the static blue target",
+    "match every red dot with a red target square",
+    "match the moving yellow 1x1 (obj_000) with the static yellow 1x1 on the bottom edge",
+]
+
+
+def test_phase1b_match_pattern():
+    for h in PHASE1B_HYPOTHESES:
+        pred = parse_goal_hypothesis(h)
+        assert pred is not None, f"failed to parse {h!r}"
+        assert pred.kind == "align_any", \
+            f"expected align_any for {h!r}, got {pred.kind}"
+        # Must extract at least one color
+        assert len(pred.colors) >= 1, f"no color extracted from {h!r}"

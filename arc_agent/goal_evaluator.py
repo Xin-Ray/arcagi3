@@ -366,6 +366,18 @@ def parse_goal_hypothesis(text: str) -> Optional[GoalPredicate]:
             kind="align_any", colors=colors, target=None,
             min_count=2, raw=text)
 
+    # 7b) NEW (2026-05-19 Phase 1B): "match X with/to Y" pattern.
+    # Reflection in /no_think mode writes things like:
+    #   "match every yellow 1x1 with a yellow target square"
+    #   "match the moving X to the static Y"
+    # Semantic: two same-color objects should co-locate (overlap or be
+    # adjacent). We approximate as align_any -- if all named-color objs
+    # share col OR row, treat as achieved.
+    if re.search(r"\bmatch(?:es|ed|ing)?\b", low):
+        return GoalPredicate(
+            kind="align_any", colors=colors, target=None,
+            min_count=2, raw=text)
+
     # 8) move to column N
     if re.search(r"\bmove\b.*\b(?:col|column)\b", low):
         target = _resolve_column_target(text)
