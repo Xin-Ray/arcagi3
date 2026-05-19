@@ -1,0 +1,19 @@
+{
+  "id": "xinxiang000/arcagi3-v4-propose",
+  "title": "arcagi3 v4 propose",
+  "code_file": "submission.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": "true",
+  "enable_gpu": "true",
+  "enable_tpu": "false",
+  "enable_internet": "false",
+  "dataset_sources": [
+    "xinxiang000/arcagi3-code",
+    "xinxiang000/smollm3-3b-4bit"
+  ],
+  "competition_sources": [
+    "arc-prize-2026-arc-agi-3"
+  ],
+  "kernel_sources": []
+}
