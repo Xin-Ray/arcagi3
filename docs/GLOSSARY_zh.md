@@ -458,6 +458,64 @@ CLI: `scripts/run_v3_multi_round.py --reasoning-mode {auto,cot,no_think}`(2026-0
 **出处**: [`project/2026-05-17-v0-subtask_decomp/architecture.md`](./project/2026-05-17-v0-subtask_decomp/architecture.md)、`arc_agent/subtask_probes/__init__.py`、`scripts/bench_subtask.py` / `bench_subtask_batch.py`。
 **相关**: [[spatial probe]]、[[/think]]、[[T-NAV-1]]、[[T-NAV-2]]、[[T-NAV-3]]、[[T-SEL-1]]、[[T-GOAL]]。
 
+### `V4+propose` (2026-05-19 推荐 production 配置)
+
+🟢 v4_clean_baseline 5-phase ablation 后选定的 production 推荐配置:
+
+```
+--mask off --propose on --click-targets off
+--action-semantics-from-llm off --hard-rules off
+--validate-hypothesis-schema wide
+--backbone HuggingFaceTB/SmolLM3-3B --reasoning-mode no_think
+--max-new-tokens-action 256 --max-new-tokens-reflection 1024
+--max-actions-total 200 --max-actions 100
+```
+
+**实测 5 game G_base (Phase 4)**:
+- ar25 87% / bp35 85% / cd82 79% / cn04 74% / dc22 84% change_rate
+- mean **82%**(vs SmolLM3 5×2×300 baseline **64%**,+18pp)
+- 0/5 wins(change_rate 提升 ≠ 通关)
+
+**Phase 3 ablation 证据**:
+- V4 baseline (全砍): 11%
+- +click_targets: 11% (0pp)
+- **+action_proposer: 86%** (+75pp) ← 唯一关键
+- +action_semantics: 11% (0pp)
+- +hard_rules: 11% (0pp)
+
+**出处**: [`project/2026-05-19-v0-v4_clean_baseline/report.md`](./project/2026-05-19-v0-v4_clean_baseline/report.md)。
+**相关**: [[action_proposer]]、[[goal_evaluator]]、[[Step-budget pooling]]、[[/no_think]]。
+
+### `Step-budget pooling`
+
+🟢 2026-05-19 v4 Phase 0 新增机制(`scripts/run_v3_multi_round.py`):
+
+`--max-actions-total N`: 跨 round 的总 step 预算。早 terminating round (e.g. GAME_OVER 在 step 70) 后,下一 round 继续耗用剩余预算,直到累计达 N 或 round_won。
+
+旧机制 (`--rounds R --max-actions M`): 每 round 独立 M step,早终止浪费预算。
+
+**Phase 4 验证**:
+- ar25: round 0 stop at 85 step → round 1 跑 87 step → 总 172/200
+- bp35: 2 round each 36 step (game 短) → 72/200(没耗完但 max_rounds=5 不够)
+
+**出处**: `scripts/run_v3_multi_round.py:485-510` + [`project/2026-05-19-v0-v4_clean_baseline/architecture.md`](./project/2026-05-19-v0-v4_clean_baseline/architecture.md) §4。
+
+### `Reflection schema 验证 (wide / strict)`
+
+🟢 2026-05-19 v4 Phase 0 新增 (`--validate-hypothesis-schema {off|wide|strict}`):
+
+orchestrator 在 Reflection delta merge **之前**,用 `parse_goal_hypothesis` 验证 `goal_hypothesis_update`:
+- `wide`: 任何 GoalPredicate kind 都接收(包括 align_any 这种模糊的)
+- `strict`: 只接收 `move_to_row/col/center/stack` 这种有明确 target coord 的 kind
+
+Parse 失败 → 丢弃 hypothesis 更新(不破坏其他 delta key)。
+
+**作用**: 给 LLM-written hypothesis 加 schema gate,防止"explore around"这种 vague 描述污染 knowledge。
+
+**Phase 1B 验证**: SmolLM3 /no_think 写 "match every yellow with target square" → parser 在 v3 加 "match" 模式后 → schema wide 接收 → 反思闭环活了。
+
+**出处**: `scripts/run_v3_multi_round.py:680-715` + Phase 1B report。
+
 ### `goal_evaluator` / `goal_judge_ab`
 
 🟢 反思闭环里 "is hypothesis achieved?" 这一 step 的两种实现:

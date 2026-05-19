@@ -2,7 +2,7 @@
 
 > 10 分钟看完知道现状。状态码 🟢 当前活、🟡 参考、⚫ 历史。
 
-最近更新: 2026-05-18 (Python parser vs LLM judge A/B 完成 — parser 完胜)
+最近更新: 2026-05-19 (v4 clean_baseline 5-phase 完成: V4+propose mean 82% change_rate, 0/5 wins)
 
 > **昨晚跨分支汇报**: [`tonight_summary.md`](./tonight_summary.md) + [`figures/tonight_summary.png`](./figures/tonight_summary.png)
 
@@ -37,8 +37,8 @@
 | `main` | 🟢 主线 | `e07e7d1` (2026-05-16) | v3.2 + mask + Knowledge + click_targets。**没有任何 push/merge 发生**;所有新工作都在 feature 分支 |
 | `feat-2026-05-16-v0-action_proposer` | 🟢 **活跃** | (本分支)`b29mzqh3m` 跑中 | 包含 action_proposer + model_bench + SmolLM3 5×2×300 + CoT 1×2×100 跑中 |
 | `feat-2026-05-17-v0-subtask-T-NAV-1` | 🟢 已 push | `c61f309` | 5 subtask 验证 + force_cot A/B 全跑完。终判 2 PASS / 3 FAIL |
-| `feat-2026-05-18-v0-det_goal_plus_force_cot` | 🟢 完成,本地 | `f894d71` | det_goal + force_cot 集成 + v1/v2 跑完。**关键发现**: 5 subtask PASS != production wins;交叉验证暴露 selector 是真瓶颈 |
-| `feat-2026-05-18-v0-revise_bench` | 🟢 **当前** | - | 测 Reflection 是否会 evidence-driven 修目标(T-REVISE)|
+| `feat-2026-05-18-v0-det_goal_plus_force_cot` | 🟢 完成,本地 | `12fd46c` | det_goal + force_cot + goal_judge A/B + parser 多次扩展。多版 smoke 暴露 LLM 不听 advisory prompt + action_semantics propagation bug |
+| `feat-2026-05-19-v0-v4_clean_baseline` | 🟢 **当前** | (今早最新)| **5-phase ablation 完成**:V4+propose mean change_rate **82%**(+18pp vs SmolLM3 baseline),5 game 0/5 wins;action_proposer 是 v3.2 旧模块唯一关键 |
 | `docs-reorg` | 🟡 等合 | `181d0b6` (2026-05-16) | 文档体系迁移,昨天写完 |
 | `feat-2026-05-16-v01-predictor` | ❌ 不合 | `722db78` (2026-05-16) | CNN OOD AUC 0.16 失败结论存档 |
 | `feat-2026-05-16-v0-grpo_train` | ⏳ Phase 0 | `11ed21f` (2026-05-16) | rollout_wrapper + 10 unit tests pass。真训练未跑 |
@@ -61,7 +61,19 @@
 
 ## 4. 验证结果汇总
 
-### 🔑 关键新发现 (2026-05-18)
+### 🔑 关键新发现 (2026-05-19,overnight v4 pipeline)
+
+| 发现 | 来源 |
+|---|---|
+| **V4+propose 5 game mean change_rate 82% (vs SmolLM3 5×2×300 baseline 64%, +18pp)** | v4_clean_baseline Phase 4 |
+| **Ablation: action_proposer 是 v3.2 旧模块里唯一关键** —— click_targets / action_semantics / hard_rules 单独加 +0pp | v4_clean_baseline Phase 3 |
+| **V4 minimal (砍光) ar25 退化 11% change_rate** —— Action 死循环 ACTION1 (94%) hit edge | v4_clean_baseline Phase 2 |
+| **`/think` 在 production prompt 下 chain 仍 0/10 闭合** —— 即使 V4 短化 prompt | v4_clean_baseline Phase 1 |
+| **Parser "match X with Y" 模式 (Phase 1B 新发现)** —— Reflection /no_think 模式喜欢用这种方言 | Phase 1B |
+| **Step-budget pooling 工作** —— round 早终止后续 round 继续耗用预算 | Phase 0/4 |
+| **5 game G_base 全 0/5 wins** —— change_rate 提升不等于通关,真正 gap 在 goal-directed planning | Phase 4 §7 |
+
+### 🔑 早前发现 (2026-05-18)
 
 | 发现 | 来源 |
 |---|---|
@@ -177,7 +189,8 @@ docs/
     ├── 2026-05-17-v0-subtask-T-GOAL/         YES/NO 目标(30% SEVERE FAIL,疑似 0 通关根因)
     ├── 2026-05-18-v0-force_cot/              force_cot A/B(T-NAV-3 PASS,T-GOAL long_acc 证伪 LLM)
     ├── 2026-05-18-v0-det_goal_plus_force_cot/ 集成 + 交叉验证(5 subtask PASS != production wins 的证据)
-    └── 2026-05-18-v0-goal_judge_ab/           🆕 Python parser vs LLM judge A/B(parser 完胜)
+    ├── 2026-05-18-v0-goal_judge_ab/           Python parser vs LLM judge A/B(parser 完胜)
+    └── 2026-05-19-v0-v4_clean_baseline/       🆕 5-phase ablation + 5 game eval(V4+propose mean 82%)
 ```
 
 ---
@@ -186,7 +199,21 @@ docs/
 
 ---
 
-### 2026-05-18 (latest) — 🟢 goal_judge A/B — `docs/project/2026-05-18-v0-goal_judge_ab/`
+### 2026-05-19 (latest) — 🟢 v4 clean_baseline 5-phase pipeline — `docs/project/2026-05-19-v0-v4_clean_baseline/`
+
+- **分支**: `feat-2026-05-19-v0-v4_clean_baseline`(本地)
+- **关键 commits**: `57d5d5a`(CLI flags)→ `eaeb89b`(docs)→ `823e7cc`(parser match)→ `017e2f5`(Phase 1)→ `f4758f0`(Phase 2)→ `d114b1f`(Phase 3)→ Phase 4 + final pending
+- **一句话**: 把 v3.2 旧模块全砍后逐个 ablation,**`action_proposer` 是唯一关键模块**(+75pp);V4+propose 5 game mean change_rate 82%(超 SmolLM3 5×2×300 baseline +18pp),但 **0/5 wins**(change_rate 不等于通关)
+- **架构含义**: production 推荐配置 = `V4 minimal + --propose on`(砍 click_targets / action_semantics / hard_rules)。下一个 gap 是 goal-directed planning,不在反思层
+- **下一步**: trace 分析 +0 通关诊断;trying `--validate-hypothesis-schema strict` 看 hypothesis 收紧是否帮助
+- **关键 outputs**:
+  - `outputs/v4_phase4_g{1..5}_*/` 5 game runs
+  - `outputs/v4_ablate_*/` Phase 3 ablation
+  - `outputs/v4_phase2_baseline_s42_*` V4 minimal (退化 11%)
+
+---
+
+### 2026-05-18 — 🟢 goal_judge A/B — `docs/project/2026-05-18-v0-goal_judge_ab/`
 
 - **分支**: `feat-2026-05-18-v0-det_goal_plus_force_cot`(本地,复用)
 - **关键 commit**: `932dcef`(parser 扩展 + LLM judge + 全套 bench 代码)+ 本次(报告)
