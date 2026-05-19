@@ -1,190 +1,237 @@
 # ARC-AGI-3 Agent — Architecture Evolution
 
-> Short history of each architecture iteration we tried for the ARC-AGI-3 competition agent. Each block: **(a) what changed**, **(b) why we changed**, **(c) what problem it exposed**.
+> Each iteration: a diagram, the <span style="color:#1f77b4">**reason we changed**</span> (blue), and the <span style="color:#d62728">**problem it exposed**</span> (red).
 
 ---
 
-## v0 — RL with intrinsic F1 reward (2026-04-27, parked)
+## v0 — RL with intrinsic F1 reward (parked)
 
-**Setup**: Qwen2.5-VL receives raw 64×64 grid as image. GRPO fine-tunes the agent. Reward signal = intrinsic F1 between the cells the agent **predicts will change** and the cells that **actually changed** after `env.step`.
-
-**Why this design**: ARC-AGI-3 gives no instructions, so we have no win-trigger labels to supervise on. Dense, frame-by-frame intrinsic reward seemed like the only training signal available.
-
-**Problem exposed**:
-1. Qwen2.5-VL extracted objects from the 64×64 image at **0% accuracy** on ar25 (`ref_object_pipeline_zh.md`). Without correct perception, the predicted-change set was noise.
-2. RL training requires a working baseline policy first; we did not yet have one.
-
-**Parked** because the next iteration showed a deterministic perception path that obviated the need for VLM image input. Kept the RL code (`arc_agent/rewards.py`, `scripts/train_grpo.py`) for future re-integration after modules are verified.
-
----
-
-## v1 — VLM with image input + 1-step ablations (2026-05-11, parked)
-
-**Setup**: Same Qwen2.5-VL but used in a simpler "one ablation per script" setup (random / Claude API / VLM single-action). Image was still the model input.
-
-**Why this design**: Establish a baseline before adding any structure.
-
-**Problem exposed**:
-- Qwen-VL image extraction continued at ~0% per-frame.
-- The model could not name the cell positions correctly, so any instruction like "click on x,y" was garbage.
-
-**Parked** in favor of v3.
-
----
-
-## v3 — scipy perception + text-only Qwen (2026-05-11)
-
-**Setup (core principle)**:
-- **Vision = deterministic algorithm** (`scipy.ndimage.label`). Per non-background color, run 4-connected component labeling. Each component → one `ObjectRecord` with `(color, bbox, center, cells, shape_signature)`.
-- **Reasoning = text LLM**. Qwen sees structured object descriptions (in text), never sees pixels.
-- The bridge is structured data (`ObjectRecord`), not pixels.
-
-8-block prompt: `[STATUS] [ACTIVE] [TEXTURE] [ACTION] [UNTRIED] [HISTORY] [GOAL] [ASK]`.
-
-**Why this change**: `ref_object_pipeline_zh.md` benchmark showed **scipy 100% vs Qwen-VL 0%** on the same per-frame object extraction. Once perception is reliable, it can stop being the bottleneck.
-
-**Problem exposed**:
-- Single-agent loop wrote no persistent learning. Across rounds the agent forgot every action it had tested.
-- High no-op rate on multi-step games (ACTION1 spam).
-
----
-
-## v3.2 — Action Agent + Reflection Agent + persistent Knowledge (2026-05-14)
-
-**Setup**: Two agents share the same backbone:
-- **Action Agent** chooses the action each step.
-- **Reflection Agent** runs after every step (not after every round), writes a JSON delta updating a `Knowledge` object that **persists across rounds** within one game_id.
-- `Knowledge` fields: `action_semantics`, `goal_hypothesis`, `goal_confidence`, `rules`, `failed_strategies`, `rejected_goals`, `round_history`, `current_alert`, `click_targets`.
-
-**Why this change**:
-- Persistent learning across rounds. Reflection writes what it observed; next round Action reads it.
-- Two agents let each one specialize: Action picks; Reflection learns.
-
-**Problem exposed**:
-- LLM **ignored advisory prompt language**. We told Reflection "do not write hypothesis = 'unknown'" and it still did. We told Action "do not pick ACTION1 if it was no-op last 3 times" and it still did.
-- This produced the next architectural layer (hard rules).
-
----
-
-## v3.2 + R1-R7 hard rules (2026-05-14 .. 05-16)
-
-**Setup**: Orchestrator-level rules that **rewrite or filter** the agents' outputs, not just advise:
-- **R1** sentinel filter (reject `"unknown" / "none"` as goal_hypothesis update)
-- **R2** Knowledge-driven action mask (replace LLM-picked actions that are flagged ineffective)
-- **R3** ActionAgent forced explore on no-op streak ≥ 5 or state-revisit ≥ 5
-- **R4** contradiction filter (drop `rules_append` that contradicts `action_semantics`)
-- **R5** failed_strategies cross-contamination filter
-- **R6** action-described-goal filter (reject hypothesis starting with "ACTION_X")
-- **R7** LOW-PRIORITY ACTIONS prompt block
-
-**Why this change**:
-- "Prompt only advises; orchestrator enforces" — direct consequence of v3.2 finding that LLM ignored prompts.
-
-**Problem exposed**:
-- These rules helped on individual issues but did not fix overall win rate. Production change_rate was 5-8% on main (v3.2 full).
-- The rules were not individually ablated; we did not know which one was load-bearing.
-
----
-
-## v3.2 + action_proposer K=3 (2026-05-16)
-
-**Setup**:
-- For each step, code generates **K=3 candidate actions**: one untried action (from `OutcomeLog`), one known-good (from `action_semantics`), one click-target candidate (from `Knowledge.click_targets`).
-- Action prompt is restyled into multi-choice: "Pick A / B / C".
-
-**Why this change**:
-- Force the LLM to explore. Without proposer, the model anchored on ACTION1 (first in the legal-actions list) and stayed there.
-
-**Problem exposed**:
-- ar25 3×30 change_rate jumped to 60/70/75% (up from 23/17/17% on bare v3.2).
-- But still 0 wins. The change_rate metric measures "did the frame change", not "did we get closer to win".
-
----
-
-## det_goal v1 / v2 / v3 (2026-05-18, iterative)
-
-**Setup**: Added two new modules on top of v3.2:
-1. **`arc_agent/goal_evaluator.py`** — deterministic parser. Reads `goal_hypothesis` text, parses it into a `GoalPredicate` (e.g., `align_col target=0`), evaluates against current `ObjectRecord` list, returns True / False / None.
-2. **Force-reject mechanism** — if parser says `achieved=True` but `env.state != WIN`, orchestrator clears the hypothesis and appends it to `rejected_goals`, forcing Reflection to rewrite.
-
-**Iterations**:
-- **v1**: Reflection token budget was 250 (default for `/no_think`). With `/think` enabled, the chain consumed all 250 tokens before producing JSON → empty deltas → no hypothesis stored. **Bug**: reflection truncation.
-- **v2**: Reflection budget raised to 2048. Hypothesis now stored, but parser couldn't parse "to top edge" / "to center" — vocab too narrow.
-- **v3**: Parser extended to 7 kinds (`align_col, align_row, align_any, move_to_row, move_to_col, move_to_center, stack, adjacent`) + verbs (`reach the X edge`, `match X with Y`).
-
-**A/B bench**: Python parser **83% T-GOAL accuracy** vs LLM-as-judge 68% (recall on TRUE: parser 100% vs LLM 22%, 1.25M× faster).
-
-**Problem exposed**:
-- Reflection writes hypotheses in dialects the parser was not built for. Even after vocab extension, model preferred "match X with Y" (no axis) → `align_any` kind without a direction target.
-- Action received hypotheses with no extractable direction.
-
----
-
-## v4 clean_baseline (2026-05-19) — 5-phase ablation
-
-**Setup**: Strip every legacy module that had never been individually validated; add them back one at a time. CLI flags:
-```
---click-targets {on, off}
---action-semantics-from-llm {on, off}
---hard-rules {on, off}
---validate-hypothesis-schema {off, wide, strict}
---max-actions-total N  --max-rounds N    (step-budget pooling)
+```mermaid
+flowchart LR
+    G[64x64 grid] --> VLM[Qwen2.5-VL<br/>image input]
+    VLM --> P[Predicted change cells]
+    VLM --> A[Action]
+    A --> ENV[env.step]
+    ENV --> O[Actual change cells]
+    P --> F1{Intrinsic F1<br/>P vs O}
+    O --> F1
+    F1 --> RL[GRPO update<br/>policy]
+    RL --> VLM
 ```
 
-V4 minimal baseline: everything off except scipy perception, goal_evaluator, force_cot Action ASK block, Reflection schema validation. SmolLM3-3B `/no_think`.
+<span style="color:#1f77b4">**Reason for this design**</span>: ARC-AGI-3 gives no labels, so no supervised signal exists. Intrinsic F1 between predicted and actual change set is the only dense reward.
 
-**5-phase pipeline**:
-1. **Phase 1**: `/think` vs `/no_think`. `/think` chain failed to close (0/10 even on short V4 prompt); `/no_think` reasoning visible 10/10. **Pick `/no_think`**.
-2. **Phase 2**: V4 minimal ar25 1×200 budget-pooled. **Result: 11% change_rate, 0 wins**. Regression of 53pp vs SmolLM3 5×2×300 baseline (64%).
-3. **Phase 3**: Add back one legacy module at a time. **`action_proposer` is the single critical module (+75pp)**. Other three (click_targets / action_semantics from LLM / hard_rules) each contribute +0pp alone.
-4. **Phase 4**: V4 + propose on 5 G_base games × 1×200 budget pooled. **Mean 82% change_rate (+18pp vs baseline), 0/5 wins**.
+<span style="color:#d62728">**Problem exposed**</span>:
+1. <span style="color:#d62728">Qwen-VL extracted objects at 0% per-frame accuracy</span> on a public game. Predicted change set was noise.
+2. <span style="color:#d62728">No working baseline policy</span> to RL-train on top of.
 
-**Why this change**:
-- Methodology reset: previous "validated" modules were measured by proxy metrics (`change_rate / count / diversity`), not their PASS definitions.
+---
 
-**Problem exposed (per-module re-validation, 2026-05-19)**:
-1. **BUG-1**: Reflection wrote 0 / 794 steps a directional hypothesis. Action had no direction signal.
-2. **BUG-2**: 49% of steps' reasoning ≠ action choice (LLM letter-mapping confusion with the K=3 shuffled candidates), `orch_override` contributed 0/318 mismatches.
-3. **BUG-3** (methodology root): bench used sanitized prompts (fixed letter mapping, given hypothesis); production used dynamic shuffle + free Reflection output → distribution shift.
+## v1 — VLM with image input + 1-step ablations (parked)
 
-**Status (open)**:
-- 0/5 wins on G_base, despite +18pp change_rate.
-- Module 1 (Goal Generation) and Module 3 (Reflection Loop) cannot be validated automatically. Human annotation requested in `docs/project/2026-05-19-v0-v4_clean_baseline/annotation_request.md`.
-- Pathfinding (A* / BFS) is a candidate to complement Module 4 once Module 1 yields directional hypotheses (see `presentation/report.md`).
+```mermaid
+flowchart LR
+    G[64x64 grid] --> VLM[Qwen2.5-VL<br/>image input]
+    VLM --> A[Action]
+    A --> ENV[env.step]
+    ENV --> G
+```
+
+<span style="color:#1f77b4">**Reason for this design**</span>: Establish a single-step baseline (random / Claude API / VLM) before any structure.
+
+<span style="color:#d62728">**Problem exposed**</span>: <span style="color:#d62728">VLM cannot name cell positions reliably</span> from the 64x64 image. Instructions like "click on (x, y)" produced garbage. Same root as v0.
+
+---
+
+## v3 — scipy perception + text-only Qwen
+
+```mermaid
+flowchart LR
+    G[64x64 grid] --> SCIPY[scipy.ndimage.label<br/>per non-bg color]
+    SCIPY --> OBJ[ObjectRecord list<br/>color, bbox, center, cells]
+    OBJ --> P8[8-block text prompt<br/>STATUS, ACTIVE, TEXTURE,<br/>ACTION, UNTRIED, HISTORY,<br/>GOAL, ASK]
+    P8 --> QWEN[Qwen2.5-VL<br/>text-only mode<br/>NO pixel input]
+    QWEN --> A[Action]
+    A --> ENV[env.step]
+    ENV --> G
+```
+
+<span style="color:#1f77b4">**Reason for this design**</span>:
+- <span style="color:#1f77b4">Benchmark showed scipy 100% vs Qwen-VL 0%</span> on the same object-extraction task.
+- <span style="color:#1f77b4">Make vision deterministic; let LLM only do reasoning</span>. Connect them via structured `ObjectRecord` data. The LLM never sees pixels.
+
+<span style="color:#d62728">**Problem exposed**</span>:
+1. <span style="color:#d62728">Single-agent loop wrote no persistent learning</span>; every new round forgot what was tested.
+2. <span style="color:#d62728">High no-op rate, ACTION1 spam</span> across multi-step games.
+
+---
+
+## v3.2 — Action Agent + Reflection Agent + persistent Knowledge
+
+```mermaid
+flowchart LR
+    G[grid_t] --> SCIPY[scipy perception]
+    SCIPY --> OBJ[ObjectRecord]
+    OBJ --> AA[Action Agent<br/>picks ACTION]
+    AA --> ENV[env.step]
+    ENV --> G2[grid_t+1]
+    G2 --> RA[Reflection Agent<br/>writes delta JSON]
+    RA --> K[Knowledge<br/>action_semantics<br/>goal_hypothesis<br/>rules, rejected_goals<br/>PERSISTS across rounds]
+    K --> AA
+    K --> RA
+```
+
+<span style="color:#1f77b4">**Reason for this design**</span>:
+- <span style="color:#1f77b4">Persistent learning across rounds</span> — Reflection writes; next round Action reads.
+- <span style="color:#1f77b4">Specialise the two agents</span> — Action picks, Reflection learns.
+
+<span style="color:#d62728">**Problem exposed**</span>: <span style="color:#d62728">LLMs ignored advisory prompt language</span>. "Do not write `unknown` as goal" → it still did. "Do not pick ACTION1 if it was no-op last 3 times" → it still did. This forced the next layer — orchestrator-level hard rules.
+
+---
+
+## v3.2 + R1-R7 hard rules
+
+```mermaid
+flowchart TB
+    subgraph LLM_LAYER [LLM layer]
+        AA[Action Agent picks ACTION_X]
+        RA[Reflection Agent writes delta]
+    end
+    subgraph ORCH [Orchestrator hard rules]
+        R1[R1 sentinel filter<br/>reject unknown/none/tbd]
+        R2[R2 action mask<br/>swap ineffective action]
+        R3[R3 forced explore<br/>no-op streak >= 5]
+        R4[R4 contradiction filter]
+        R5[R5 failed cross-contam]
+        R6[R6 action-described goal filter]
+        R7[R7 LOW-PRIORITY prompt block]
+    end
+    AA --> R2 --> R3 --> A_OUT[Final action]
+    RA --> R1 --> R4 --> R5 --> R6 --> KU[Knowledge update]
+    R7 --> AA
+```
+
+<span style="color:#1f77b4">**Reason for this design**</span>: <span style="color:#1f77b4">"Prompt only advises; orchestrator enforces"</span>. Hard rules rewrite or filter LLM output, not just request behaviour.
+
+<span style="color:#d62728">**Problem exposed**</span>:
+1. <span style="color:#d62728">Production change_rate stayed 5-8%</span> on main with all 7 rules on.
+2. <span style="color:#d62728">No individual ablation</span>: we did not know which rule was load-bearing.
+
+---
+
+## v3.2 + action_proposer K=3 candidates
+
+```mermaid
+flowchart LR
+    OBJ[ObjectRecord] --> PROP[action_proposer<br/>generates K=3:<br/>1 untried<br/>1 known-good<br/>1 click-target]
+    PROP --> P_MC[multi-choice prompt<br/>A: ACTION3<br/>B: ACTION1<br/>C: ACTION6]
+    P_MC --> LLM[LLM picks letter]
+    LLM --> R[Resolver:<br/>letter -> action]
+    R --> A[Action]
+```
+
+<span style="color:#1f77b4">**Reason for this design**</span>: <span style="color:#1f77b4">force the LLM to explore</span> by hiding ACTION1 from the default pick. The model can no longer anchor on "first in legal list".
+
+<span style="color:#d62728">**Problem exposed**</span>:
+1. <span style="color:#1f77b4">ar25 change_rate jumped 23-17-17% to 60-70-75%</span> (good).
+2. <span style="color:#d62728">But still 0 wins</span>. change_rate measures "frame moved", not "moved toward win".
+
+---
+
+## det_goal v1 / v2 / v3 (parser + force-reject mechanism)
+
+```mermaid
+flowchart TB
+    RA[Reflection Agent<br/>writes goal_hypothesis] --> H[hypothesis text]
+    H --> PARSE[goal_evaluator.parse_goal_hypothesis<br/>regex + structural parser]
+    PARSE --> PRED{GoalPredicate?<br/>kind, colors, target}
+    PRED -- yes --> EVAL[evaluate_predicate<br/>vs ObjectRecord]
+    PRED -- no --> DROP[drop / fallback]
+    EVAL --> V{verdict: True / False / None}
+    V -- True + env != WIN --> REJ[FORCE-REJECT<br/>clear hypothesis<br/>push to rejected_goals]
+    V -- False --> CONT[continue toward target]
+    V -- None + frame_objs --> HAL[HALLUCINATED alert<br/>colors not in frame]
+    REJ --> RA
+    HAL --> RA
+```
+
+<span style="color:#1f77b4">**Reason for this design**</span>:
+- <span style="color:#1f77b4">Goal recognition needs to be deterministic</span> — synthetic bench showed LLM scored only 30-35% on "is the hypothesis achieved?" while a Python parser scored 83% with 1.25M× speed and 100% recall on TRUE cases (vs LLM 22%).
+- <span style="color:#1f77b4">When the agent thinks the goal is met but env disagrees, reject the hypothesis</span>. This is the only loop that can self-correct when the LLM hallucinates.
+
+<span style="color:#d62728">**Problems exposed across iterations**</span>:
+- <span style="color:#d62728">v1: Reflection token budget (250) truncated the JSON</span> output before it could emit a hypothesis. Empty deltas, nothing stored.
+- <span style="color:#d62728">v2: parser vocab too narrow</span> — Reflection wrote "to top edge" and "to the center", but parser only recognised "in column 0" / "vertically aligned".
+- <span style="color:#d62728">v3: Reflection now favours "match X with Y" dialect</span> (under `/no_think` mode) — parser sees this as `align_any` with no direction target.
+
+---
+
+## v4 clean_baseline (current)
+
+```mermaid
+flowchart LR
+    subgraph VALIDATED [Kept: validated modules]
+        P0[Module 0: scipy perception]
+        P2[Module 2: parser]
+        P3[Module 3: force-reject]
+        P5[Module 5: force_cot prompt]
+        P6[Module 6: action_proposer]
+    end
+    subgraph REMOVED [Stripped: legacy unvalidated]
+        X1[click_targets bandit]
+        X2[action_semantics from LLM]
+        X3[hard_rules R1/R4/R5/R6/R7]
+        X4[R2 action mask]
+        X5[8-block prompt blocks]
+    end
+    subgraph CLI_FLAGS [V4 CLI ablation flags]
+        F1[--click-targets on/off]
+        F2[--action-semantics-from-llm on/off]
+        F3[--hard-rules on/off]
+        F4[--validate-hypothesis-schema wide/strict]
+        F5[--max-actions-total N<br/>step-budget pooling]
+    end
+```
+
+<span style="color:#1f77b4">**Reason for this design**</span>:
+- <span style="color:#1f77b4">Methodology reset</span> — every legacy module was kept just by inertia; we never knew which was carrying load and which was dead weight.
+- <span style="color:#1f77b4">CLI flags allow single-module ablation</span> so we can re-validate.
+
+**5-phase ablation result**:
+
+| Configuration | change_rate (ar25 100 steps) | ACTION1 share | Verdict |
+|---|---:|---:|---|
+| V4 baseline (all off) | 11% | 94% | reference |
+| V4 + click_targets | 11% | 92% | NEUTRAL |
+| <span style="color:#1f77b4">**V4 + action_proposer**</span> | <span style="color:#1f77b4">**86%**</span> | <span style="color:#1f77b4">**20%**</span> | <span style="color:#1f77b4">**CRITICAL (+75pp)**</span> |
+| V4 + action_semantics | 11% | 94% | NEUTRAL |
+| V4 + hard_rules | 11% | 94% | NEUTRAL |
+
+5-game V4 + propose: **mean 82% change_rate, 0 / 5 wins**.
+
+<span style="color:#d62728">**Problems exposed by per-module re-validation**</span>:
+- <span style="color:#d62728">BUG-1 (fatal): 0 / 794 Phase 4 steps had a directional hypothesis</span> — Reflection wrote `match X with Y` instead of `move_to_row N`, so Action had no direction signal.
+- <span style="color:#d62728">BUG-2 (severe): 49% of steps reasoning ≠ action</span> — model wrote "I pick ACTION1" but output `choice: A` which mapped to ACTION3. Pure LLM letter-mapping confusion; orchestrator override contributed 0 of 318 mismatches.
+- <span style="color:#d62728">BUG-3 (methodology root): bench-vs-production distribution shift</span> — bench used sanitized inputs (fixed letter mapping, pre-written hypotheses); production used dynamic shuffle + free output. The 6 bench-PASS modules were not actually validated for production.
 
 ---
 
 ## What we kept across all iterations
 
-- `scipy.ndimage.label` perception (v3 → today). Validated 100% vs Qwen-VL 0%.
-- `Knowledge` persistence across rounds within one `game_id` (v3.2 → today).
-- Text-only LLM (no pixel input to model) (v3 → today).
-- The "vision is algorithm, reasoning is LLM" principle.
+- `scipy.ndimage.label` perception. **<span style="color:#1f77b4">Reason kept: 100% vs VLM 0%</span>.**
+- `Knowledge` persistence across rounds. **<span style="color:#1f77b4">Reason kept: single-round agent forgot every observation</span>.**
+- Text-only LLM (no pixel input to model). **<span style="color:#1f77b4">Reason kept: structured data is what the model can actually parse</span>.**
 
 ## What we tried and dropped
 
-- Qwen-VL image input (v0, v1) — replaced by scipy perception.
-- `/think` mode in production (det_goal v1) — chain does not close in long production prompts.
-- `click_targets` bandit standalone (v3.2 → v4 Phase 3) — 0 / 5 production hit rate in cross-validation.
-- `action_semantics` from LLM as standalone (v3.2 → v4 Phase 3) — 0pp on its own.
-- Hard rules R1 / R4 / R5 / R6 / R7 in V4 baseline — 0pp on their own when proposer is the carrier.
+- VLM image input (v0, v1) — <span style="color:#d62728">replaced after 0% extraction benchmark</span>.
+- `/think` mode in production (det_goal v1) — <span style="color:#d62728">chain never closed in long prompts</span>.
+- click_targets bandit standalone — <span style="color:#d62728">0 / 5 production hit rate in cross-validation</span>.
+- action_semantics from LLM standalone — <span style="color:#d62728">+0pp on its own in the ablation</span>.
+- Hard rules R1/R4/R5/R6/R7 in V4 baseline — <span style="color:#d62728">+0pp on their own when proposer is the carrier</span>.
 
 ## Reading order for new collaborators
 
-1. `docs/README.md` — top-level 10-minute overview.
-2. `docs/verify.md` — 7-module verification spec + current bugs.
-3. `presentation/report.md` — achievements + future plan (this folder, English).
-4. This file (`presentation/arc.md`) — architecture history.
-5. `docs/project/2026-05-19-v0-v4_clean_baseline/report.md` — most recent ablation study.
-
-## Cross-references
-
-| Project doc | What it covers |
-|---|---|
-| `docs/project/2026-04-27-v0-rl/architecture.md` | v0 RL design |
-| `docs/project/2026-05-11-v3-baseline/architecture.md` | scipy perception + text-only Qwen |
-| `docs/project/2026-05-14-v3_2-double_agent/architecture.md` | Action + Reflection split |
-| `docs/project/2026-05-16-v0-action_proposer/architecture.md` | K=3 candidate generator |
-| `docs/project/2026-05-18-v0-force_cot/report.md` | force_cot Action prompt A/B |
-| `docs/project/2026-05-18-v0-goal_judge_ab/report.md` | Python parser vs LLM judge |
-| `docs/project/2026-05-19-v0-v4_clean_baseline/report.md` | Final v4 ablation + 5-game eval |
+1. `presentation/report.md` — current state, why no BFS/DFS, RL plan, results.
+2. `presentation/arc.md` — this file.
+3. The repository README at the top level.
