@@ -30,7 +30,94 @@
 
 ---
 
-## 2. 当前分支状态(2026-05-19 morning)
+## 2. 目标拆解 + 解法验证地图
+
+> **作用**: 顶层目标怎么拆,每个子目标的解法在哪验证,当前 PASS / FAIL / UNKNOWN 状态。**这一节是项目方法学心脏** — 来自 2026-05-19 用户提的修正(之前的 6 模块"已验证"用的是 proxy metric,不是模块自身 PASS 定义)。
+
+### 2.1 顶层目标 → 6 模块拆解
+
+```
+通关 1 game (env.state == WIN)
+   ↓ 必要条件
+推断 win 条件 + 高效执行到该 state
+   ↓ 拆 6 个模块
+1. Goal Generation       Reflection 从帧观察 + history 推断 win 条件
+2. Goal Recognition      parser/judge 判 "hypothesis 是否已达成"
+3. Action Selection      Action 给 hypothesis,选朝 hypothesis 方向的 action
+4. Reflection Loop       achieved=True 但 env!=WIN → reject hypothesis 重写
+5. force_cot Prompt      Action prompt 加 step-by-step + goal-target 措辞
+6. K=3 Candidates        action_proposer 提供 explore 多样性,防 ACTION1 死循环
+```
+
+### 2.2 每模块 PASS 定义 + bench 验证 + production 验证 + 当前结论
+
+| # | 模块 | 真 PASS 定义 | bench 验证 | production 验证 | 当前结论 |
+|---|---|---|---|---|---|
+| 1 | **Goal Generation** | hypothesis 描述的状态 = game 真实 win 条件 | ❌ 没 bench(game GT 隐藏) | ⏳ 等用户标 `annotation_request.md` | **UNKNOWN** |
+| 2 | **Goal Recognition** (parser) | parser=True ↔ env-WIN | T-GOAL 83% on synthetic ✅ | 0/5 wins → 没法测 precision/recall | bench ✅, prod 待测 |
+| 3 | **Action Selection** | action 方向 = hypothesis 方向 | T-NAV-1 71%, T-NAV-3 97% (synthetic) ✅ | **0/794 步有 directional hypothesis** ❌ | **prod FAIL** (上游 bug:hypothesis 没方向) |
+| 4 | **Reflection Loop** | rejected 的 hypothesis 都是真错的 | ❌ 没 bench | ⏳ 等用户标 `annotation_request.md` Module 4 | **UNKNOWN** |
+| 5 | **force_cot Prompt** | reasoning 提的 ACTION = 实际选的 action | T-NAV-3 force_cot +30pp synthetic ✅ | **51% match,49% 纯 LLM 字母 confusion** ❌ | **prod FAIL** (letter mapping shuffle) |
+| 6 | **K=3 Candidates** | 每步 K=3 包含 goal-aligned 选项 | Phase 3 ablation +75pp change_rate ✅ | K=3 出现率 78% (22% 步缺) | prod **partial PASS** (proxy) |
+
+### 2.3 当前已知的 production-level bug
+
+| bug | 模块 | 表现 | 根因 |
+|---|---|---|---|
+| **B1**: hypothesis 无方向 | Module 1 / 3 | Reflection 0/794 步写 `move_to_row/col/center`,全 `align_any`/`match` | `/no_think` SmolLM3 偏好 "match X with Y" dialect |
+| **B2**: reasoning ↔ action 49% LLM 脱节 | Module 5 | model reasoning 说 ACTION X 但 output `choice: Y` 选了别的字母 | action_proposer K=3 letter 动态 shuffle,model 跟踪不准 |
+
+### 2.4 bench-vs-production distribution shift(方法学根因)
+
+bench 砍掉了 production 的几样东西,所以 bench 全 PASS 不代表 production work:
+
+| bench 用的 | production 加了 | 后果 |
+|---|---|---|
+| 预写好的 hypothesis (T-GOAL) | Reflection 自由写 | hypothesis dialect 不可控 → B1 |
+| 固定 letter mapping (A→ACTION1) | K=3 候选每步 shuffle | model letter confusion → B2 |
+| (current, target) 直接给 | Reflection 推断 target | target 可能是幻觉 (smoke 2/3 发现) |
+| 一次性 single probe | 跨步骤累积 Knowledge | 累积错误信息污染 |
+
+→ **修补思路**: 每个 production-level bug 都应该有对应的 production-level bench (T-DIALECT 测 hypothesis dialect / T-MAPPING 测 letter tracking),不能只 bench sanitized 形态。
+
+### 2.5 已验证有用的解法模块(可放心保留)
+
+| 模块 | 验证证据 | 状态 |
+|---|---|---|
+| scipy perception | scipy 100% vs Qwen-VL 0% | ✅ PASS |
+| parser (goal_evaluator) | T-GOAL 83% vs LLM 68% (recall on TRUE 100% vs 22%, 1.25M× 快) | ✅ PASS |
+| Parser v1 vocab (edge/center/align_any/reach/match) | 100% v2 round 0 + smoke 3 production hypothesis | ✅ PASS |
+| Force-reject 机制 | smoke 3 验证 Reflection 真改写 | ✅ PASS (但 reject correctness 待标注 Module 4) |
+| Hallucination 检测 | smoke 2-3 18/20 触发清掉幻觉色 hypothesis | ✅ PASS |
+| Reflection 截断 fix (token budget) | v1→v2 JSON 输出从 0/100 → 100/100 | ✅ PASS |
+| Step-budget pooling | Phase 4 ar25 round 0 早终 → round 1 继续 | ✅ PASS |
+| `action_proposer` K=3 | Phase 3 ablation +75pp(唯一关键 v3.2 旧模块) | ✅ PASS |
+| Reflection schema validation (wide) | Phase 1B 丢掉 invalid hypothesis | ✅ PASS |
+
+### 2.6 已验证无用 / 有害的模块(砍掉)
+
+| 模块 | 证据 | 状态 |
+|---|---|---|
+| `click_targets` bandit | cross-validation 0/5 命中 + Phase 3 ablation +0pp | ❌ 砍 |
+| `action_semantics` from LLM | Phase 3 ablation +0pp;只在 propose 转化后才间接有用 | ❌ 砍 |
+| `R1/R4/R5/R6/R7` hard rules | Phase 3 ablation +0pp;R3 在 action_agent 仍留 | ❌ 砍 |
+| `R2 mask` | 没单独 ablate,保留 off 跟 V4 一致 | ❌ 砍 |
+| 8-block prompt 的 LOW-PRIORITY / TEXTURE | 让 prompt 过长 → /think 死循环 | ❌ 砍 |
+
+### 2.7 下一步验证 (按 ROI)
+
+| P | 行动 | 验证什么模块 |
+|---|---|---|
+| P0 | 用户标 `annotation_request.md` (~15 min, 25-35 条) | Module 1 + 4 PASS rate |
+| P0 | `--validate-hypothesis-schema strict` 重跑 ar25 | Module 1 经 schema 强制后是否变 directional |
+| P0 | 固定 action_proposer letter mapping (A永远=ACTION1) | Module 5 letter confusion 是否消除 |
+| P1 | A\* 寻路接管 Module 3 navigation (200 行,半天) | Module 3 从 prod FAIL → PASS;预期 ar25/dc22 等可通关 |
+| P1 | T-DIALECT bench + T-MAPPING bench | bench 跟 production 距离补足 |
+| P2 | 升级模型试 SmolLM3-7B / Qwen3-4B | 模型本身的 dialect / mapping tracking |
+
+---
+
+## 3. 当前分支状态(2026-05-19 morning)
 
 | 分支 | 状态 | 顶端 commit | 在做什么 |
 |---|---|---|---|
@@ -47,7 +134,7 @@
 
 ---
 
-## 3. 当前方向(2026-05-19)
+## 4. 当前方向(2026-05-19)
 
 **v4 5-phase 跑完 + per-module re-validation 揭示方法学 gap**:之前 6 个 "validated" 模块用的都是 proxy metric (change_rate / count / diversity),不是模块自身 PASS 定义。用真定义重审 Phase 4 5 game trace 暴露 **2 hidden bugs**:
 
@@ -65,7 +152,7 @@
 
 ---
 
-## 4. 验证结果汇总
+## 5. 验证结果汇总
 
 ### 🔑 关键新发现 (2026-05-19,overnight v4 + 方法学修正)
 
@@ -174,7 +261,7 @@
 
 ---
 
-## 5. 文档结构
+## 6. 文档结构
 
 ```
 docs/
@@ -211,7 +298,7 @@ docs/
 
 ---
 
-## 6. 版本历史(最新在上)
+## 7. 版本历史(最新在上)
 
 ---
 
@@ -424,7 +511,7 @@ docs/
 
 ---
 
-## 7. 3 分钟接管路径
+## 8. 3 分钟接管路径
 
 刚加入项目?按这个顺序读:
 
@@ -437,7 +524,7 @@ docs/
 
 ---
 
-## 8. 关键代码文件(grep 入口)
+## 9. 关键代码文件(grep 入口)
 
 - `arc_agent/knowledge.py` — Knowledge dataclass
 - `arc_agent/action_mask.py` — R2 mask
@@ -458,7 +545,7 @@ docs/
 
 ---
 
-## 9. 维护
+## 10. 维护
 
 - 新方向 → 在 `docs/project/<date>-<version>-<name>/` 起目录 + 1 个 git 分支 `feat-<date>-<v>-<name>` + 写 `architecture.md`
 - 项目跑出实验 → 在该目录写 `report.md` + 把图放 `figures/`;**报告头部列出所有 `outputs/` 路径**(2026-05-17 新规)
