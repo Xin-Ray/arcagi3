@@ -68,8 +68,8 @@ def pack_code():
     print(f"\n[done] {out}")
     print("Upload via:")
     print(f"  cd {out}")
-    print("  kaggle datasets create -p .       # first time")
-    print("  kaggle datasets version -p . -m 'note'  # subsequent")
+    print("  kaggle datasets create -p . --dir-mode tar       # first time, REQUIRED --dir-mode for folders")
+    print("  kaggle datasets version -p . -m 'note' --dir-mode tar  # subsequent")
 
 
 # ─── model dataset ────────────────────────────────────────────────────

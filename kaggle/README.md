@@ -40,12 +40,15 @@ https://www.kaggle.com/competitions/arc-prize-2026-arc-agi-3 → "Join Competiti
 **(a) Code dataset** — our `arc_agent/` library:
 
 ```powershell
+# Always run prepare_datasets.py from REPO ROOT (D:\xxiangworking\Game_quiz)
 .venv\Scripts\python.exe kaggle\prepare_datasets.py code
 cd kaggle\_pack\arcagi3-code
-kaggle datasets create -p .         # first time only
-# subsequent updates:
-kaggle datasets version -p . -m "update to commit <hash>"
+kaggle datasets create -p . --dir-mode tar         # first time only; --dir-mode REQUIRED for folders
+# subsequent updates (use this after the first create):
+kaggle datasets version -p . -m "update to commit <hash>" --dir-mode tar
 ```
+
+> ⚠ **Critical**: `kaggle datasets create -p .` WITHOUT `--dir-mode tar` silently skips all subfolders. You'll get a dataset containing only `requirements.txt` and `dataset-metadata.json` and have to re-version.
 
 **(b) Model dataset** — SmolLM3-3B (~6 GB):
 
