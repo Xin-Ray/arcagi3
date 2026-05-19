@@ -34,29 +34,46 @@
 
 > **作用**: 顶层目标怎么拆,每个子目标的解法在哪验证,当前 PASS / FAIL / UNKNOWN 状态。**这一节是项目方法学心脏** — 来自 2026-05-19 用户提的修正(之前的 6 模块"已验证"用的是 proxy metric,不是模块自身 PASS 定义)。
 
-### 2.1 顶层目标 → 6 模块拆解
+### 2.1 顶层目标 → 7 模块拆解(0-6,沿数据流)
 
 ```
 通关 1 game (env.state == WIN)
    ↓ 必要条件
 推断 win 条件 + 高效执行到该 state
-   ↓ 拆 6 个模块
-1. Goal Generation       Reflection 从帧观察 + history 推断 win 条件
+   ↓ 沿数据流拆 7 个模块
+
+帧 (raw 64×64 grid)
+   ↓
+0. Perception            scipy.ndimage.label → ObjectRecord list (色/bbox/center/cells)
+   ↓ + history (前帧 + outcome_log)
+1. Goal Generation       Reflection 从结构化对象 + history 推断 win 条件,写 goal_hypothesis
+   ↓
 2. Goal Recognition      parser/judge 判 "hypothesis 是否已达成"
-3. Action Selection      Action 给 hypothesis,选朝 hypothesis 方向的 action
-4. Reflection Loop       achieved=True 但 env!=WIN → reject hypothesis 重写
-5. force_cot Prompt      Action prompt 加 step-by-step + goal-target 措辞
+   ↓ (if achieved=True 但 env!=WIN)
+3. Reflection Loop       reject hypothesis → push rejected_goals → 强迫 Reflection 重写
+   ↓ (else hypothesis 仍 active)
+4. Action Selection      给 hypothesis,选朝 hypothesis 方向的 action
+   ↓
+5. force_cot Prompt      Action prompt 加 step-by-step + goal-target 措辞,引导推理
+   ↓
 6. K=3 Candidates        action_proposer 提供 explore 多样性,防 ACTION1 死循环
+   ↓
+env.step(action)
+   ↓
+帧 t+1 → 回 0. Perception ...
 ```
+
+**注**: Module 0 是 deterministic 算法(scipy,不是 LLM)。**核心原则: 视觉用算法,推理用 LLM,两者通过 ObjectRecord 结构化数据连接,LLM 永远不看像素**(`docs/project/2026-05-11-v3-baseline/architecture.md` §0 + `arch_v3_zh.md` §0)。
 
 ### 2.2 每模块 PASS 定义 + bench 验证 + production 验证 + 当前结论
 
 | # | 模块 | 真 PASS 定义 | bench 验证 | production 验证 | 当前结论 |
 |---|---|---|---|---|---|
+| **0** | **Perception** (scipy) | 每帧准确抽出所有 non-background 对象(color/bbox/center/cells) | scipy 100% vs Qwen-VL 0% on ar25 ✅ | 跑了 800+ step 没出错;Reflection 拿到的 obj 全是 scipy 的 | ✅ **PASS** (deterministic) |
 | 1 | **Goal Generation** | hypothesis 描述的状态 = game 真实 win 条件 | ❌ 没 bench(game GT 隐藏) | ⏳ 等用户标 `annotation_request.md` | **UNKNOWN** |
 | 2 | **Goal Recognition** (parser) | parser=True ↔ env-WIN | T-GOAL 83% on synthetic ✅ | 0/5 wins → 没法测 precision/recall | bench ✅, prod 待测 |
-| 3 | **Action Selection** | action 方向 = hypothesis 方向 | T-NAV-1 71%, T-NAV-3 97% (synthetic) ✅ | **0/794 步有 directional hypothesis** ❌ | **prod FAIL** (上游 bug:hypothesis 没方向) |
-| 4 | **Reflection Loop** | rejected 的 hypothesis 都是真错的 | ❌ 没 bench | ⏳ 等用户标 `annotation_request.md` Module 4 | **UNKNOWN** |
+| 3 | **Reflection Loop** | rejected 的 hypothesis 都是真错的 | ❌ 没 bench | ⏳ 等用户标 `annotation_request.md` Module 4 | **UNKNOWN** |
+| 4 | **Action Selection** | action 方向 = hypothesis 方向 | T-NAV-1 71%, T-NAV-3 97% (synthetic) ✅ | **0/794 步有 directional hypothesis** ❌ | **prod FAIL** (上游 bug:hypothesis 没方向) |
 | 5 | **force_cot Prompt** | reasoning 提的 ACTION = 实际选的 action | T-NAV-3 force_cot +30pp synthetic ✅ | **51% match,49% 纯 LLM 字母 confusion** ❌ | **prod FAIL** (letter mapping shuffle) |
 | 6 | **K=3 Candidates** | 每步 K=3 包含 goal-aligned 选项 | Phase 3 ablation +75pp change_rate ✅ | K=3 出现率 78% (22% 步缺) | prod **partial PASS** (proxy) |
 
