@@ -426,6 +426,13 @@ def run_one_game(
     seed: int = 42,
     preload_action_map: Optional[str] = None,
     mask_mode: str = "strict",
+    # v4 (2026-05-19) clean-baseline flags
+    click_targets_on: bool = True,
+    action_semantics_from_llm: bool = True,
+    hard_rules_on: bool = True,
+    validate_hypothesis_schema: str = "off",  # "off"/"wide"/"strict"
+    max_actions_total: Optional[int] = None,
+    max_rounds: Optional[int] = None,
 ) -> dict[str, Any]:
     """Run N rounds of one game.
 
@@ -450,7 +457,27 @@ def run_one_game(
 
     per_round_metrics: list[dict[str, Any]] = []
 
-    for r in range(n_rounds):
+    # v4 (2026-05-19): step-budget pooling. When max_actions_total set,
+    # rounds run until cumulative step count reaches that, regardless of
+    # n_rounds. Per-round cap = min(max_actions, remaining_budget).
+    # Old mode (max_actions_total=None) preserved for back-compat.
+    use_step_pool = max_actions_total is not None and max_actions_total > 0
+    if use_step_pool:
+        effective_max_rounds = max_rounds if max_rounds is not None else (
+            (max_actions_total + max_actions - 1) // max_actions
+        )
+        round_iter = range(effective_max_rounds)
+    else:
+        round_iter = range(n_rounds)
+    steps_consumed_total = 0
+
+    for r in round_iter:
+        if use_step_pool and steps_consumed_total >= max_actions_total:
+            break
+        round_step_cap = (
+            min(max_actions, max_actions_total - steps_consumed_total)
+            if use_step_pool else max_actions
+        )
         env = arc.make(game_id_full, scorecard_id=card_id)
         action_agent.reset_episode_state(knowledge=knowledge)
         if hasattr(reflection_agent, "reset"):
@@ -461,6 +488,7 @@ def run_one_game(
         trace_path = round_dir / "trace.jsonl"
         knowledge_step_path = round_dir / "knowledge_per_step.jsonl"
         reflection_raw_path = round_dir / "reflection_raw.txt"
+        action_raw_path = round_dir / "action_raw.txt"  # 2026-05-18 v3 debug
 
         frames_for_gif: list[Any] = []
         levels_completed_start: Optional[int] = None
@@ -472,7 +500,7 @@ def run_one_game(
         n_no_op = 0
         n_parse_failures = 0
 
-        for step in range(max_actions):
+        for step in range(round_step_cap):
             # D: natural termination -- end round when game says it's over,
             # not on artificial step caps. max_actions stays as safety upper
             # bound but is usually not hit before the game ends.
@@ -593,7 +621,7 @@ def run_one_game(
             refl_object_memory = getattr(
                 getattr(action_agent, "_state", None), "object_memory", None
             )
-            if refl_object_memory is not None:
+            if refl_object_memory is not None and click_targets_on:
                 alive_objs = refl_object_memory.alive_tracked()
                 knowledge.click_targets = update_click_targets(
                     knowledge.click_targets,
@@ -656,29 +684,62 @@ def run_one_game(
                       file=sys.stderr)
                 delta, refl_raw = {}, ""
 
+            # v4 (2026-05-19) filters: drop delta fields that v4 baseline
+            # disables.
+            if not action_semantics_from_llm and isinstance(delta, dict):
+                delta = {k: v for k, v in delta.items()
+                         if k != "action_semantics_update"}
+
+            # v4: validate hypothesis_update via deterministic parser.
+            # wide -> any GoalPredicate kind accepted; strict -> only kinds
+            # with explicit target (move_to_row/col/center, stack).
+            if (validate_hypothesis_schema != "off"
+                    and isinstance(delta, dict)
+                    and delta.get("goal_hypothesis_update")):
+                from arc_agent.goal_evaluator import parse_goal_hypothesis
+                hyp_text = delta["goal_hypothesis_update"]
+                pred = parse_goal_hypothesis(hyp_text)
+                accept = False
+                if pred is not None:
+                    if validate_hypothesis_schema == "wide":
+                        accept = True
+                    elif validate_hypothesis_schema == "strict":
+                        accept = pred.kind in (
+                            "move_to_row", "move_to_col",
+                            "move_to_center", "stack",
+                        )
+                if not accept:
+                    # Drop the bad hypothesis; orchestrator owns the
+                    # schema, sentinel filter on Reflection re-writes.
+                    delta = {k: v for k, v in delta.items()
+                             if k != "goal_hypothesis_update"}
+
             knowledge = knowledge.merged_with_delta(delta)
 
             # P2: orchestrator owns deterministic rules / failed_strategies
             # / confidence. Reflection no longer writes these (its schema
             # was simplified). Apply auto-rules via merged_with_delta so the
             # existing R4 contradiction filter still runs.
-            legal_for_rules = available_action_names(latest)
-            auto_rules = auto_rules_from_outcome_log(
-                refl_outcome_log, legal_for_rules,
-            )
-            auto_failed = auto_failed_strategies_from_outcome_log(
-                refl_outcome_log, legal_for_rules,
-            )
-            auto_conf = infer_goal_confidence_from_log(
-                refl_outcome_log,
-                win_seen=(latest.state == GameState.WIN),
-            )
-            if auto_rules or auto_failed or auto_conf is not None:
-                knowledge = knowledge.merged_with_delta({
-                    "rules_append": auto_rules,
-                    "failed_strategies_append": auto_failed,
-                    "goal_confidence_update": auto_conf,
-                })
+            # v4 (2026-05-19): skipped when --hard-rules off; R3 in
+            # action_agent still applies as safety net.
+            if hard_rules_on:
+                legal_for_rules = available_action_names(latest)
+                auto_rules = auto_rules_from_outcome_log(
+                    refl_outcome_log, legal_for_rules,
+                )
+                auto_failed = auto_failed_strategies_from_outcome_log(
+                    refl_outcome_log, legal_for_rules,
+                )
+                auto_conf = infer_goal_confidence_from_log(
+                    refl_outcome_log,
+                    win_seen=(latest.state == GameState.WIN),
+                )
+                if auto_rules or auto_failed or auto_conf is not None:
+                    knowledge = knowledge.merged_with_delta({
+                        "rules_append": auto_rules,
+                        "failed_strategies_append": auto_failed,
+                        "goal_confidence_update": auto_conf,
+                    })
 
             # Single alert channel (replaces the old C `_build_stuck_alert`
             # + Reflection's current_alert in tandem). Priority order:
@@ -839,6 +900,17 @@ def run_one_game(
             except OSError:
                 pass
 
+            # 2026-05-18 v3 debug: save Action raw output for diagnosis
+            try:
+                a_raw = getattr(getattr(action_agent, "_state", None),
+                                "last_response_raw", "") or ""
+                with action_raw_path.open("a", encoding="utf-8") as f:
+                    f.write(f"--- step {step} action={action.name} ---\n")
+                    f.write(a_raw)
+                    f.write("\n")
+            except OSError:
+                pass
+
             prev_grid = grid_after
 
         # end of round
@@ -875,6 +947,10 @@ def run_one_game(
             "knowledge_rules_size": len(knowledge.rules),
             "knowledge_failed_strategies_size": len(knowledge.failed_strategies),
         })
+        steps_consumed_total += n_steps  # v4 step-budget pooling
+        if use_step_pool and round_won:
+            # natural WIN -> stop the pool early
+            break
         _append_jsonl(knowledge_history_path, {
             "round": r,
             "knowledge_at_round_end": knowledge.to_dict(),
@@ -989,6 +1065,52 @@ def main() -> None:
              "discovery. Use to isolate whether Reflection's failure to "
              "write semantics is the bottleneck.",
     )
+    # v4 (2026-05-19) clean-baseline flags
+    parser.add_argument(
+        "--click-targets", dest="click_targets", choices=["on", "off"],
+        default="on",
+        help="v4: enable Knowledge.click_targets bandit. off = skip "
+             "update_click_targets call (cross-validation showed 0/5 hit "
+             "rate in production).",
+    )
+    parser.add_argument(
+        "--action-semantics-from-llm", dest="action_semantics_from_llm",
+        choices=["on", "off"], default="on",
+        help="v4: accept Reflection's action_semantics_update field. "
+             "off = filter that key from delta -> action_semantics stays "
+             "empty -> action_proposer cant tag known-good actions. "
+             "Used to break ACTION1-spam loop caused by 'known-good' prior.",
+    )
+    parser.add_argument(
+        "--hard-rules", dest="hard_rules", choices=["on", "off"],
+        default="on",
+        help="v4: umbrella for R1/R4/R5/R6/R7 orchestrator hard rules. "
+             "off = bypass Knowledge.merged_with_delta sentinel filters "
+             "(only R3 forced-explore in action_agent still applies as a "
+             "safety net).",
+    )
+    parser.add_argument(
+        "--validate-hypothesis-schema",
+        dest="validate_hypothesis_schema",
+        choices=["off", "wide", "strict"], default="off",
+        help="v4: validate Reflection's goal_hypothesis_update via "
+             "parse_goal_hypothesis. wide accepts any GoalPredicate kind "
+             "(incl align_any); strict only kinds with explicit target. "
+             "Failed parse -> drop the update (no Knowledge mutation).",
+    )
+    parser.add_argument(
+        "--max-actions-total", dest="max_actions_total", type=int,
+        default=None,
+        help="v4: total step budget across rounds. When set, rounds run "
+             "in a pool until cumulative steps reach this. Replaces "
+             "the rigid --rounds N x --max-actions M scheme. Per-round "
+             "cap is min(--max-actions, remaining_budget).",
+    )
+    parser.add_argument(
+        "--max-rounds", dest="max_rounds", type=int, default=None,
+        help="v4: cap on number of rounds in budget-pool mode. "
+             "Default = ceil(max_actions_total / max_actions).",
+    )
     args = parser.parse_args()
 
     ts = time.strftime("%Y%m%d-%H%M%S")
@@ -1058,6 +1180,14 @@ def main() -> None:
                     else args.preload_action_map
                 ),
                 mask_mode=args.mask_mode,
+                click_targets_on=(args.click_targets == "on"),
+                action_semantics_from_llm=(
+                    args.action_semantics_from_llm == "on"
+                ),
+                hard_rules_on=(args.hard_rules == "on"),
+                validate_hypothesis_schema=args.validate_hypothesis_schema,
+                max_actions_total=args.max_actions_total,
+                max_rounds=args.max_rounds,
             )
         finally:
             try:
