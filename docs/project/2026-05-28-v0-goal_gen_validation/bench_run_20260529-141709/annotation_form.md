@@ -28,7 +28,48 @@
 
 ![ar25 A_zero_prior](./frame_A_ar25_step0.png)
 
-**Proposed ground truth (you can override below)**:
+### Module 0 output — objects extracted by scipy
+
+```
+  - obj_000  color=yellow     shape=9x9  center=(18,39)  bbox=(15,36,23,44)  size=45
+  - obj_001  color=gray       shape=9x9  center=(18,23)  bbox=(15,18,23,26)  size=40
+  - obj_002  color=gray       shape=1x63  center=(63,31)  bbox=(63,0,63,62)  size=63
+  - obj_003  color=maroon     shape=63x30  center=(31,14)  bbox=(0,0,62,29)  size=1845
+  - obj_004  color=maroon     shape=63x30  center=(31,48)  bbox=(0,33,62,62)  size=1800
+  - obj_005  color=purple     shape=63x3  center=(31,31)  bbox=(0,30,62,32)  size=189
+  - obj_006  color=tan        shape=64x1  center=(32,63)  bbox=(0,63,63,63)  size=64
+  - obj_007  color=tan        shape=9x9  center=(48,54)  bbox=(45,51,53,59)  size=45
+```
+
+### Module 0 output — object relations
+
+```
+[OBJECT RELATIONS]
+  same-color groups (color: object ids):
+    gray: #1, #2
+    maroon: #3, #4
+    tan: #6, #7
+  same-shape groups (shape: object ids):
+    9x9_size45: #0, #7
+  closest object pairs (by center distance):
+    #0 <-> #5: 15.3 cells
+    #1 <-> #5: 15.3 cells
+    #4 <-> #6: 15.5 cells
+    #0 <-> #1: 15.6 cells
+    #0 <-> #4: 15.8 cells
+```
+
+### Module 1 prior — Knowledge state going INTO this hypothesis call
+
+```
+  rounds_played: 0, rounds_won: 0
+  goal_hypothesis: ''
+  goal_confidence: low
+  action_semantics: (empty)
+  rejected_goals: (empty)
+```
+
+### Proposed ground truth (override below if you disagree)
 
 > match / align the gray objects with their same-color targets (heuristic best-guess — verify by play)
 
@@ -36,8 +77,7 @@
 your_corrected_ground_truth: 
 ```
 
-
-### K=5 hypotheses
+### K=5 hypotheses produced by Reflection Agent
 
 | k | hypothesis | label (YES/PARTIAL/NO/UNSURE) |
 |---:|---|---|
@@ -47,13 +87,59 @@ your_corrected_ground_truth:
 | 3 | align the 9x9_size45 objects vertically in the left column | **____** |
 | 4 | align the two gray objects (objects #1 and #2) vertically in the left column | **____** |
 
+
 ---
 
 ## ar25 — frame B_with_prior (step 30)
 
 ![ar25 B_with_prior](./frame_B_ar25_step30.png)
 
-**Proposed ground truth (you can override below)**:
+### Module 0 output — objects extracted by scipy
+
+```
+  - obj_000  color=yellow     shape=9x9  center=(9,39)  bbox=(6,36,14,44)  size=45
+  - obj_001  color=gray       shape=24x1  center=(12,63)  bbox=(0,63,23,63)  size=24
+  - obj_002  color=gray       shape=9x9  center=(9,23)  bbox=(6,18,14,26)  size=40
+  - obj_003  color=gray       shape=1x63  center=(63,31)  bbox=(63,0,63,62)  size=63
+  - obj_004  color=maroon     shape=63x30  center=(32,14)  bbox=(0,0,62,29)  size=1845
+  - obj_005  color=maroon     shape=63x30  center=(31,48)  bbox=(0,33,62,62)  size=1800
+  - obj_006  color=purple     shape=63x3  center=(31,31)  bbox=(0,30,62,32)  size=189
+  - obj_007  color=tan        shape=40x1  center=(44,63)  bbox=(24,63,63,63)  size=40
+  - obj_008  color=tan        shape=9x9  center=(48,54)  bbox=(45,51,53,59)  size=45
+```
+
+### Module 0 output — object relations
+
+```
+[OBJECT RELATIONS]
+  same-color groups (color: object ids):
+    gray: #1, #2, #3
+    maroon: #4, #5
+    tan: #7, #8
+  same-shape groups (shape: object ids):
+    9x9_size45: #0, #8
+  closest object pairs (by center distance):
+    #7 <-> #8: 10.2 cells
+    #0 <-> #2: 15.6 cells
+    #5 <-> #6: 16.6 cells
+    #4 <-> #6: 16.7 cells
+    #5 <-> #8: 17.8 cells
+```
+
+### Module 1 prior — Knowledge state going INTO this hypothesis call
+
+```
+  rounds_played: 0, rounds_won: 0
+  goal_hypothesis: ''
+  goal_confidence: low
+  action_semantics: (empty)
+  rejected_goals:
+    - match the moving blue square to the static blue target
+    - match the moving yellow square to the static yellow target
+    - match the moving yellow 1x1 (obj_000) to the static yellow target
+```
+
+### Proposed ground truth (override below if you disagree)
 
 > match / align the gray objects with their same-color targets (heuristic best-guess — verify by play)
 
@@ -61,8 +147,7 @@ your_corrected_ground_truth:
 your_corrected_ground_truth: 
 ```
 
-
-### K=5 hypotheses
+### K=5 hypotheses produced by Reflection Agent
 
 | k | hypothesis | label (YES/PARTIAL/NO/UNSURE) |
 |---:|---|---|
@@ -72,13 +157,79 @@ your_corrected_ground_truth:
 | 3 | (parse failed) | **____** |
 | 4 | (parse failed) | **____** |
 
+
 ---
 
 ## bp35 — frame A_zero_prior (step 0)
 
 ![bp35 A_zero_prior](./frame_A_bp35_step0.png)
 
-**Proposed ground truth (you can override below)**:
+### Module 0 output — objects extracted by scipy
+
+```
+  - obj_000  color=green      shape=1x1  center=(1,2)  bbox=(1,2,1,2)  size=1
+  - obj_001  color=green      shape=1x1  center=(1,8)  bbox=(1,8,1,8)  size=1
+  - obj_002  color=green      shape=1x1  center=(1,13)  bbox=(1,13,1,13)  size=1
+  - obj_003  color=green      shape=1x1  center=(1,17)  bbox=(1,17,1,17)  size=1
+  - obj_004  color=green      shape=1x1  center=(1,19)  bbox=(1,19,1,19)  size=1
+  - obj_005  color=green      shape=1x1  center=(1,23)  bbox=(1,23,1,23)  size=1
+  - obj_006  color=green      shape=1x1  center=(1,25)  bbox=(1,25,1,25)  size=1
+  - obj_007  color=green      shape=1x1  center=(1,29)  bbox=(1,29,1,29)  size=1
+  - obj_008  color=green      shape=1x1  center=(1,56)  bbox=(1,56,1,56)  size=1
+  - obj_009  color=green      shape=1x1  center=(1,62)  bbox=(1,62,1,62)  size=1
+  - obj_010  color=green      shape=1x1  center=(4,1)  bbox=(4,1,4,1)  size=1
+  - obj_011  color=green      shape=1x1  center=(4,7)  bbox=(4,7,4,7)  size=1
+  - obj_012  color=green      shape=1x1  center=(4,55)  bbox=(4,55,4,55)  size=1
+  - obj_013  color=green      shape=1x1  center=(4,61)  bbox=(4,61,4,61)  size=1
+  - obj_014  color=green      shape=1x1  center=(5,4)  bbox=(5,4,5,4)  size=1
+  - obj_015  color=green      shape=1x1  center=(5,10)  bbox=(5,10,5,10)  size=1
+  - obj_016  color=green      shape=1x1  center=(5,13)  bbox=(5,13,5,13)  size=1
+  - obj_017  color=green      shape=1x1  center=(5,17)  bbox=(5,17,5,17)  size=1
+  - obj_018  color=green      shape=1x1  center=(5,19)  bbox=(5,19,5,19)  size=1
+  - obj_019  color=green      shape=1x1  center=(5,23)  bbox=(5,23,5,23)  size=1
+  - obj_020  color=green      shape=1x1  center=(5,25)  bbox=(5,25,5,25)  size=1
+  - obj_021  color=green      shape=1x1  center=(5,29)  bbox=(5,29,5,29)  size=1
+  - obj_022  color=green      shape=1x1  center=(5,58)  bbox=(5,58,5,58)  size=1
+  - obj_023  color=green      shape=1x1  center=(7,2)  bbox=(7,2,7,2)  size=1
+  - obj_024  color=green      shape=1x1  center=(7,8)  bbox=(7,8,7,8)  size=1
+  - obj_025  color=green      shape=1x1  center=(7,14)  bbox=(7,14,7,14)  size=1
+  - obj_026  color=green      shape=1x1  center=(7,20)  bbox=(7,20,7,20)  size=1
+  - obj_027  color=green      shape=1x1  center=(7,26)  bbox=(7,26,7,26)  size=1
+  - obj_028  color=green      shape=1x1  center=(7,56)  bbox=(7,56,7,56)  size=1
+  - obj_029  color=green      shape=1x1  center=(7,62)  bbox=(7,62,7,62)  size=1
+  ... (160 more)
+```
+
+### Module 0 output — object relations
+
+```
+[OBJECT RELATIONS]
+  same-color groups (color: object ids):
+    green: #0, #1, #2, #3, #4, #5, #6, #7, #8, #9, #10, #11, #12, #13, #14, #15, #16, #17, #18, #19, #20, #21, #22, #23, #24, #25, #26, #27, #28, #29, #30, #31, #32, #33, #34, #35, #36, #37, #38, #39, #40, #41, #42, #43, #44, #45, #46, #47, #48, #49, #50, #51, #52, #53, #54, #55, #56, #57, #58, #59, #60, #61, #62, #63, #64, #65, #66, #67, #68, #69, #70, #71, #72, #73, #74, #75, #76, #77, #78, #79, #80, #81, #82, #83, #84, #85, #86, #87, #88, #89, #90, #91, #92, #93, #94, #95, #96, #97, #98, #99, #100, #101, #102, #103, #104, #105, #106, #107, #108, #109, #110, #111, #112, #113, #114, #115, #116, #117, #118, #119, #120, #121, #122, #123, #124, #125, #126, #127, #128, #129, #130, #131, #132, #133, #134, #135, #136, #137, #138, #139, #140, #141, #142, #143, #144, #145, #146, #147, #148, #149, #150, #151, #152, #153, #154, #155, #156, #157, #158, #159, #160, #161, #162, #163, #164, #165, #166, #167, #168, #169, #170, #171, #172, #173, #174, #175, #176, #177
+    purple: #180, #181
+    rose: #183, #184, #185, #186, #187, #188, #189
+  same-shape groups (shape: object ids):
+    1x1_size1: #0, #1, #2, #3, #4, #5, #6, #7, #8, #9, #10, #11, #12, #13, #14, #15, #16, #17, #18, #19, #20, #21, #22, #23, #24, #25, #26, #27, #28, #29, #30, #31, #32, #33, #34, #35, #36, #37, #38, #39, #40, #41, #42, #43, #44, #45, #46, #47, #48, #49, #50, #51, #52, #53, #54, #55, #56, #57, #58, #59, #60, #61, #62, #63, #64, #65, #66, #67, #68, #69, #70, #71, #72, #73, #74, #75, #76, #77, #78, #79, #80, #81, #82, #83, #84, #85, #86, #87, #88, #89, #90, #91, #92, #93, #94, #95, #96, #97, #98, #99, #100, #101, #102, #103, #104, #105, #106, #107, #108, #109, #110, #111, #112, #113, #114, #115, #116, #117, #118, #119, #120, #121, #122, #123, #124, #125, #126, #127, #128, #129, #130, #131, #132, #133, #134, #135, #136, #137, #138, #139, #140, #141, #142, #143, #144, #145, #146, #147, #148, #149, #150, #151, #152, #153, #154, #155, #156, #157, #158, #159, #160, #161, #162, #163, #164, #165, #166, #167, #168, #169, #170, #171, #172, #173, #174, #175, #176, #177
+    5x5_size21: #183, #184, #185, #186, #187, #188, #189
+  closest object pairs (by center distance):
+    #179 <-> #182: 1.3 cells
+    #3 <-> #4: 2.0 cells
+    #5 <-> #6: 2.0 cells
+    #17 <-> #18: 2.0 cells
+    #19 <-> #20: 2.0 cells
+```
+
+### Module 1 prior — Knowledge state going INTO this hypothesis call
+
+```
+  rounds_played: 0, rounds_won: 0
+  goal_hypothesis: ''
+  goal_confidence: low
+  action_semantics: (empty)
+  rejected_goals: (empty)
+```
+
+### Proposed ground truth (override below if you disagree)
 
 > match / align the green objects with their same-color targets (heuristic best-guess — verify by play)
 
@@ -86,8 +237,7 @@ your_corrected_ground_truth:
 your_corrected_ground_truth: 
 ```
 
-
-### K=5 hypotheses
+### K=5 hypotheses produced by Reflection Agent
 
 | k | hypothesis | label (YES/PARTIAL/NO/UNSURE) |
 |---:|---|---|
@@ -97,13 +247,87 @@ your_corrected_ground_truth:
 | 3 | match every yellow object with its corresponding static target | **____** |
 | 4 | align the two purple squares vertically in the left column | **____** |
 
+
 ---
 
 ## bp35 — frame B_with_prior (step 30)
 
 ![bp35 B_with_prior](./frame_B_bp35_step30.png)
 
-**Proposed ground truth (you can override below)**:
+### Module 0 output — objects extracted by scipy
+
+```
+  - obj_000  color=green      shape=1x1  center=(1,2)  bbox=(1,2,1,2)  size=1
+  - obj_001  color=green      shape=1x1  center=(1,8)  bbox=(1,8,1,8)  size=1
+  - obj_002  color=green      shape=1x1  center=(1,25)  bbox=(1,25,1,25)  size=1
+  - obj_003  color=green      shape=1x1  center=(1,29)  bbox=(1,29,1,29)  size=1
+  - obj_004  color=green      shape=1x1  center=(1,56)  bbox=(1,56,1,56)  size=1
+  - obj_005  color=green      shape=1x1  center=(1,62)  bbox=(1,62,1,62)  size=1
+  - obj_006  color=green      shape=1x1  center=(4,1)  bbox=(4,1,4,1)  size=1
+  - obj_007  color=green      shape=1x1  center=(4,7)  bbox=(4,7,4,7)  size=1
+  - obj_008  color=green      shape=1x1  center=(4,55)  bbox=(4,55,4,55)  size=1
+  - obj_009  color=green      shape=1x1  center=(4,61)  bbox=(4,61,4,61)  size=1
+  - obj_010  color=green      shape=1x1  center=(5,4)  bbox=(5,4,5,4)  size=1
+  - obj_011  color=green      shape=1x1  center=(5,10)  bbox=(5,10,5,10)  size=1
+  - obj_012  color=green      shape=1x1  center=(5,25)  bbox=(5,25,5,25)  size=1
+  - obj_013  color=green      shape=1x1  center=(5,29)  bbox=(5,29,5,29)  size=1
+  - obj_014  color=green      shape=1x1  center=(5,58)  bbox=(5,58,5,58)  size=1
+  - obj_015  color=green      shape=1x1  center=(7,2)  bbox=(7,2,7,2)  size=1
+  - obj_016  color=green      shape=1x1  center=(7,8)  bbox=(7,8,7,8)  size=1
+  - obj_017  color=green      shape=1x1  center=(7,14)  bbox=(7,14,7,14)  size=1
+  - obj_018  color=green      shape=1x1  center=(7,20)  bbox=(7,20,7,20)  size=1
+  - obj_019  color=green      shape=1x1  center=(7,26)  bbox=(7,26,7,26)  size=1
+  - obj_020  color=green      shape=1x1  center=(7,56)  bbox=(7,56,7,56)  size=1
+  - obj_021  color=green      shape=1x1  center=(7,62)  bbox=(7,62,7,62)  size=1
+  - obj_022  color=green      shape=1x1  center=(10,1)  bbox=(10,1,10,1)  size=1
+  - obj_023  color=green      shape=1x1  center=(10,7)  bbox=(10,7,10,7)  size=1
+  - obj_024  color=green      shape=1x1  center=(10,13)  bbox=(10,13,10,13)  size=1
+  - obj_025  color=green      shape=1x1  center=(10,19)  bbox=(10,19,10,19)  size=1
+  - obj_026  color=green      shape=1x1  center=(10,25)  bbox=(10,25,10,25)  size=1
+  - obj_027  color=green      shape=1x1  center=(10,55)  bbox=(10,55,10,55)  size=1
+  - obj_028  color=green      shape=1x1  center=(10,61)  bbox=(10,61,10,61)  size=1
+  - obj_029  color=green      shape=1x1  center=(11,4)  bbox=(11,4,11,4)  size=1
+  ... (194 more)
+```
+
+### Module 0 output — object relations
+
+```
+[OBJECT RELATIONS]
+  same-color groups (color: object ids):
+    green: #0, #1, #2, #3, #4, #5, #6, #7, #8, #9, #10, #11, #12, #13, #14, #15, #16, #17, #18, #19, #20, #21, #22, #23, #24, #25, #26, #27, #28, #29, #30, #31, #32, #33, #34, #35, #36, #37, #38, #39, #40, #41, #42, #43, #44, #45, #46, #47, #48, #49, #50, #51, #52, #53, #54, #55, #56, #57, #58, #59, #60, #61, #62, #63, #64, #65, #66, #67, #68, #69, #70, #71, #72, #73, #74, #75, #76, #77, #78, #79, #80, #81, #82, #83, #84, #85, #86, #87, #88, #89, #90, #91, #92, #93, #94, #95, #96, #97, #98, #99, #100, #101, #102, #103, #104, #105, #106, #107, #108, #109, #110, #111, #112, #113, #114, #115, #116, #117, #118, #119, #120, #121, #122, #123, #124, #125, #126, #127, #128, #129, #130, #131, #132, #133, #134, #135, #136
+    gray: #137, #138, #139, #140, #141, #142, #143, #144, #145, #146, #147, #148, #149, #150, #151, #152, #153, #154, #155, #156, #157, #158, #159, #160, #161, #162, #163, #164, #165, #166, #167, #168, #169, #170, #171, #172, #173, #174, #175, #176, #177, #178, #179, #180, #181, #182, #183, #184, #185, #186, #187, #188, #189, #190, #191, #192, #193, #194, #195, #196, #197, #198, #199, #200, #201, #202, #203, #204, #205, #206, #207, #208, #209, #210, #211, #212
+    purple: #214, #215, #216
+    rose: #218, #219, #220, #221, #222
+  same-shape groups (shape: object ids):
+    1x1_size1: #0, #1, #2, #3, #4, #5, #6, #7, #8, #9, #10, #11, #12, #13, #14, #15, #16, #17, #18, #19, #20, #21, #22, #23, #24, #25, #26, #27, #28, #29, #30, #31, #32, #33, #34, #35, #36, #37, #38, #39, #40, #41, #42, #43, #44, #45, #46, #47, #48, #49, #50, #51, #52, #53, #54, #55, #56, #57, #58, #59, #60, #61, #62, #63, #64, #65, #66, #67, #68, #69, #70, #71, #72, #73, #74, #75, #76, #77, #78, #79, #80, #81, #82, #83, #84, #85, #86, #87, #88, #89, #90, #91, #92, #93, #94, #95, #96, #97, #98, #99, #100, #101, #102, #103, #104, #105, #106, #107, #108, #109, #110, #111, #112, #113, #114, #115, #116, #117, #118, #119, #120, #121, #122, #123, #124, #125, #126, #127, #128, #129, #130, #131, #132, #133, #134, #135, #136, #202, #203, #204, #205, #206, #207, #208, #209, #210, #211, #212
+    4x1_size4: #138, #139, #140, #141, #142, #143, #144, #145, #146, #147, #148, #170, #171, #172, #173, #174, #175, #176, #177, #178, #179, #180
+    2x1_size2: #149, #150, #151, #152, #153, #154, #155, #156, #157, #158, #159, #160, #161, #162, #163, #164, #165, #166, #167, #168, #169, #181, #182, #183, #184, #185, #186, #187, #188, #189, #190, #191, #192, #193, #194, #195, #196, #197, #198, #199, #200, #201, #217
+    5x5_size21: #218, #219, #220, #221, #222
+  closest object pairs (by center distance):
+    #213 <-> #217: 1.3 cells
+    #98 <-> #216: 1.9 cells
+    #41 <-> #42: 2.0 cells
+    #43 <-> #44: 2.0 cells
+    #45 <-> #46: 2.0 cells
+```
+
+### Module 1 prior — Knowledge state going INTO this hypothesis call
+
+```
+  rounds_played: 0, rounds_won: 0
+  goal_hypothesis: ''
+  goal_confidence: low
+  action_semantics: (empty)
+  rejected_goals:
+    - match every red dot with a red target square
+    - match the moving blue square to the static blue target
+    - match every gray, green, maroon, navy, and purple object with a corresponding static target
+    - match every purple object with a corresponding static target
+    - match the moving blue square (obj_174) with the static blue target
+```
+
+### Proposed ground truth (override below if you disagree)
 
 > match / align the green objects with their same-color targets (heuristic best-guess — verify by play)
 
@@ -111,8 +335,7 @@ your_corrected_ground_truth:
 your_corrected_ground_truth: 
 ```
 
-
-### K=5 hypotheses
+### K=5 hypotheses produced by Reflection Agent
 
 | k | hypothesis | label (YES/PARTIAL/NO/UNSURE) |
 |---:|---|---|
@@ -122,13 +345,58 @@ your_corrected_ground_truth:
 | 3 | (parse failed) | **____** |
 | 4 | match the purple objects (the ones at #214 and #215) by aligning them horizontally | **____** |
 
+
 ---
 
 ## cd82 — frame A_zero_prior (step 0)
 
 ![cd82 A_zero_prior](./frame_A_cd82_step0.png)
 
-**Proposed ground truth (you can override below)**:
+### Module 0 output — objects extracted by scipy
+
+```
+  - obj_000  color=red        shape=9x14  center=(26,32)  bbox=(24,25,32,38)  size=30
+  - obj_001  color=green      shape=9x46  center=(4,41)  bbox=(0,18,8,63)  size=359
+  - obj_002  color=yellow     shape=18x18  center=(12,12)  bbox=(0,0,17,17)  size=68
+  - obj_003  color=yellow     shape=5x5  center=(4,37)  bbox=(2,35,6,39)  size=16
+  - obj_004  color=yellow     shape=5x5  center=(4,43)  bbox=(2,41,6,45)  size=16
+  - obj_005  color=yellow     shape=1x64  center=(63,32)  bbox=(63,0,63,63)  size=64
+  - obj_006  color=gray       shape=16x16  center=(8,8)  bbox=(0,0,15,15)  size=156
+  - obj_007  color=gray       shape=54x64  center=(37,33)  bbox=(9,0,62,63)  size=3080
+  - obj_008  color=navy       shape=3x3  center=(4,43)  bbox=(3,42,5,44)  size=9
+  - obj_009  color=navy       shape=5x10  center=(10,8)  bbox=(8,3,12,12)  size=50
+  - obj_010  color=navy       shape=7x12  center=(28,32)  bbox=(25,26,31,37)  size=84
+```
+
+### Module 0 output — object relations
+
+```
+[OBJECT RELATIONS]
+  same-color groups (color: object ids):
+    yellow: #2, #3, #4, #5
+    gray: #6, #7
+    navy: #8, #9, #10
+  same-shape groups (shape: object ids):
+    5x5_size16: #3, #4
+  closest object pairs (by center distance):
+    #4 <-> #8: 0.0 cells
+    #0 <-> #10: 1.6 cells
+    #1 <-> #4: 2.5 cells
+    #1 <-> #8: 2.5 cells
+    #6 <-> #9: 2.5 cells
+```
+
+### Module 1 prior — Knowledge state going INTO this hypothesis call
+
+```
+  rounds_played: 0, rounds_won: 0
+  goal_hypothesis: ''
+  goal_confidence: low
+  action_semantics: (empty)
+  rejected_goals: (empty)
+```
+
+### Proposed ground truth (override below if you disagree)
 
 > match / align the yellow objects with their same-color targets (heuristic best-guess — verify by play)
 
@@ -136,8 +404,7 @@ your_corrected_ground_truth:
 your_corrected_ground_truth: 
 ```
 
-
-### K=5 hypotheses
+### K=5 hypotheses produced by Reflection Agent
 
 | k | hypothesis | label (YES/PARTIAL/NO/UNSURE) |
 |---:|---|---|
@@ -147,13 +414,60 @@ your_corrected_ground_truth:
 | 3 | align the navy group with the moving blue square at the bottom edge | **____** |
 | 4 | align each yellow group with their respective targets | **____** |
 
+
 ---
 
 ## cd82 — frame B_with_prior (step 30)
 
 ![cd82 B_with_prior](./frame_B_cd82_step30.png)
 
-**Proposed ground truth (you can override below)**:
+### Module 0 output — objects extracted by scipy
+
+```
+  - obj_000  color=red        shape=17x17  center=(28,21)  bbox=(21,14,37,30)  size=43
+  - obj_001  color=green      shape=9x46  center=(4,41)  bbox=(0,18,8,63)  size=359
+  - obj_002  color=yellow     shape=18x18  center=(12,12)  bbox=(0,0,17,17)  size=68
+  - obj_003  color=yellow     shape=5x5  center=(4,37)  bbox=(2,35,6,39)  size=16
+  - obj_004  color=yellow     shape=5x5  center=(4,43)  bbox=(2,41,6,45)  size=16
+  - obj_005  color=yellow     shape=1x45  center=(63,22)  bbox=(63,0,63,44)  size=45
+  - obj_006  color=gray       shape=16x16  center=(8,8)  bbox=(0,0,15,15)  size=156
+  - obj_007  color=gray       shape=55x64  center=(37,33)  bbox=(9,0,63,63)  size=3085
+  - obj_008  color=navy       shape=3x3  center=(4,43)  bbox=(3,42,5,44)  size=9
+  - obj_009  color=navy       shape=5x10  center=(10,8)  bbox=(8,3,12,12)  size=50
+  - obj_010  color=navy       shape=13x13  center=(29,22)  bbox=(23,16,35,28)  size=85
+  - obj_011  color=navy       shape=10x10  center=(38,31)  bbox=(34,27,43,36)  size=75
+```
+
+### Module 0 output — object relations
+
+```
+[OBJECT RELATIONS]
+  same-color groups (color: object ids):
+    yellow: #2, #3, #4, #5
+    gray: #6, #7
+    navy: #8, #9, #10, #11
+  same-shape groups (shape: object ids):
+    5x5_size16: #3, #4
+  closest object pairs (by center distance):
+    #4 <-> #8: 0.0 cells
+    #0 <-> #10: 1.9 cells
+    #1 <-> #4: 2.5 cells
+    #1 <-> #8: 2.5 cells
+    #6 <-> #9: 2.5 cells
+```
+
+### Module 1 prior — Knowledge state going INTO this hypothesis call
+
+```
+  rounds_played: 0, rounds_won: 0
+  goal_hypothesis: 'align the two yellow 1x1s vertically in the left column'
+  goal_confidence: low
+  action_semantics: (empty)
+  rejected_goals:
+    - align the two yellow 1x1s (obj_001 and obj_000) vertically in the left column
+```
+
+### Proposed ground truth (override below if you disagree)
 
 > match / align the yellow objects with their same-color targets (heuristic best-guess — verify by play)
 
@@ -161,8 +475,7 @@ your_corrected_ground_truth:
 your_corrected_ground_truth: 
 ```
 
-
-### K=5 hypotheses
+### K=5 hypotheses produced by Reflection Agent
 
 | k | hypothesis | label (YES/PARTIAL/NO/UNSURE) |
 |---:|---|---|
@@ -172,13 +485,54 @@ your_corrected_ground_truth:
 | 3 | (parse failed) | **____** |
 | 4 | (parse failed) | **____** |
 
+
 ---
 
 ## cn04 — frame A_zero_prior (step 0)
 
 ![cn04 A_zero_prior](./frame_A_cn04_step0.png)
 
-**Proposed ground truth (you can override below)**:
+### Module 0 output — objects extracted by scipy
+
+```
+  - obj_000  color=yellow     shape=1x32  center=(0,32)  bbox=(0,16,0,47)  size=32
+  - obj_001  color=light blue shape=3x3  center=(27,15)  bbox=(26,14,28,16)  size=9
+  - obj_002  color=light blue shape=3x3  center=(27,21)  bbox=(26,20,28,22)  size=9
+  - obj_003  color=light blue shape=3x3  center=(36,39)  bbox=(35,38,37,40)  size=9
+  - obj_004  color=light blue shape=3x3  center=(42,39)  bbox=(41,38,43,40)  size=9
+  - obj_005  color=purple     shape=64x64  center=(32,31)  bbox=(0,0,63,63)  size=3704
+  - obj_006  color=purple     shape=15x3  center=(39,45)  bbox=(32,44,46,46)  size=45
+  - obj_007  color=rose       shape=21x9  center=(39,45)  bbox=(29,41,49,49)  size=144
+```
+
+### Module 0 output — object relations
+
+```
+[OBJECT RELATIONS]
+  same-color groups (color: object ids):
+    light blue: #1, #2, #3, #4
+    purple: #5, #6
+  same-shape groups (shape: object ids):
+    3x3_size9: #1, #2, #3, #4
+  closest object pairs (by center distance):
+    #6 <-> #7: 0.0 cells
+    #1 <-> #2: 6.0 cells
+    #3 <-> #4: 6.0 cells
+    #3 <-> #6: 6.7 cells
+    #3 <-> #7: 6.7 cells
+```
+
+### Module 1 prior — Knowledge state going INTO this hypothesis call
+
+```
+  rounds_played: 0, rounds_won: 0
+  goal_hypothesis: ''
+  goal_confidence: low
+  action_semantics: (empty)
+  rejected_goals: (empty)
+```
+
+### Proposed ground truth (override below if you disagree)
 
 > match / align the light blue objects with their same-color targets (heuristic best-guess — verify by play)
 
@@ -186,8 +540,7 @@ your_corrected_ground_truth:
 your_corrected_ground_truth: 
 ```
 
-
-### K=5 hypotheses
+### K=5 hypotheses produced by Reflection Agent
 
 | k | hypothesis | label (YES/PARTIAL/NO/UNSURE) |
 |---:|---|---|
@@ -197,13 +550,57 @@ your_corrected_ground_truth:
 | 3 | align the purple same-color group | **____** |
 | 4 | align all the same-color groups vertically in the left column | **____** |
 
+
 ---
 
 ## cn04 — frame B_with_prior (step 30)
 
 ![cn04 B_with_prior](./frame_B_cn04_step30.png)
 
-**Proposed ground truth (you can override below)**:
+### Module 0 output — objects extracted by scipy
+
+```
+  - obj_000  color=yellow     shape=1x19  center=(0,38)  bbox=(0,29,0,47)  size=19
+  - obj_001  color=light blue shape=3x3  center=(18,24)  bbox=(17,23,19,25)  size=9
+  - obj_002  color=light blue shape=3x3  center=(18,30)  bbox=(17,29,19,31)  size=9
+  - obj_003  color=light blue shape=3x3  center=(36,39)  bbox=(35,38,37,40)  size=9
+  - obj_004  color=light blue shape=3x3  center=(42,39)  bbox=(41,38,43,40)  size=9
+  - obj_005  color=purple     shape=64x64  center=(32,31)  bbox=(0,0,63,63)  size=3704
+  - obj_006  color=purple     shape=15x3  center=(39,45)  bbox=(32,44,46,46)  size=45
+  - obj_007  color=teal       shape=15x15  center=(8,27)  bbox=(2,20,16,34)  size=135
+  - obj_008  color=rose       shape=21x9  center=(39,45)  bbox=(29,41,49,49)  size=144
+```
+
+### Module 0 output — object relations
+
+```
+[OBJECT RELATIONS]
+  same-color groups (color: object ids):
+    light blue: #1, #2, #3, #4
+    purple: #5, #6
+  same-shape groups (shape: object ids):
+    3x3_size9: #1, #2, #3, #4
+  closest object pairs (by center distance):
+    #6 <-> #8: 0.0 cells
+    #1 <-> #2: 6.0 cells
+    #3 <-> #4: 6.0 cells
+    #3 <-> #6: 6.7 cells
+    #3 <-> #8: 6.7 cells
+```
+
+### Module 1 prior — Knowledge state going INTO this hypothesis call
+
+```
+  rounds_played: 0, rounds_won: 0
+  goal_hypothesis: ''
+  goal_confidence: low
+  action_semantics: (empty)
+  rejected_goals:
+    - move the yellow 1x1 (obj_002) to the bottom edge
+    - match the moving blue square to the static blue target
+```
+
+### Proposed ground truth (override below if you disagree)
 
 > match / align the light blue objects with their same-color targets (heuristic best-guess — verify by play)
 
@@ -211,8 +608,7 @@ your_corrected_ground_truth:
 your_corrected_ground_truth: 
 ```
 
-
-### K=5 hypotheses
+### K=5 hypotheses produced by Reflection Agent
 
 | k | hypothesis | label (YES/PARTIAL/NO/UNSURE) |
 |---:|---|---|
@@ -222,13 +618,79 @@ your_corrected_ground_truth:
 | 3 | (parse failed) | **____** |
 | 4 | align the two light blue 3x3_size9 objects in the center | **____** |
 
+
 ---
 
 ## dc22 — frame A_zero_prior (step 0)
 
 ![dc22 A_zero_prior](./frame_A_dc22_step0.png)
 
-**Proposed ground truth (you can override below)**:
+### Module 0 output — objects extracted by scipy
+
+```
+  - obj_000  color=red        shape=6x6  center=(20,24)  bbox=(18,22,23,27)  size=32
+  - obj_001  color=red        shape=4x4  center=(32,10)  bbox=(30,8,33,11)  size=16
+  - obj_002  color=red        shape=6x6  center=(40,10)  bbox=(38,8,43,13)  size=32
+  - obj_003  color=green      shape=10x64  center=(4,32)  bbox=(0,0,9,63)  size=640
+  - obj_004  color=green      shape=9x64  center=(58,32)  bbox=(54,0,62,63)  size=576
+  - obj_005  color=yellow     shape=44x32  center=(32,15)  bbox=(10,0,53,31)  size=1252
+  - obj_006  color=yellow     shape=1x1  center=(34,10)  bbox=(34,10,34,10)  size=1
+  - obj_007  color=yellow     shape=1x1  center=(35,9)  bbox=(35,9,35,9)  size=1
+  - obj_008  color=yellow     shape=1x1  center=(36,10)  bbox=(36,10,36,10)  size=1
+  - obj_009  color=yellow     shape=1x1  center=(37,9)  bbox=(37,9,37,9)  size=1
+  - obj_010  color=gray       shape=44x32  center=(32,48)  bbox=(10,32,53,63)  size=1190
+  - obj_011  color=light blue shape=5x13  center=(19,48)  bbox=(17,42,21,54)  size=47
+  - obj_012  color=light blue shape=4x6  center=(32,14)  bbox=(30,12,33,17)  size=24
+  - obj_013  color=maroon     shape=4x4  center=(22,20)  bbox=(20,18,23,21)  size=16
+  - obj_014  color=maroon     shape=1x1  center=(34,9)  bbox=(34,9,34,9)  size=1
+  - obj_015  color=maroon     shape=1x1  center=(34,11)  bbox=(34,11,34,11)  size=1
+  - obj_016  color=maroon     shape=5x13  center=(36,48)  bbox=(34,42,38,54)  size=47
+  - obj_017  color=maroon     shape=1x1  center=(35,8)  bbox=(35,8,35,8)  size=1
+  - obj_018  color=maroon     shape=1x1  center=(35,10)  bbox=(35,10,35,10)  size=1
+  - obj_019  color=maroon     shape=1x1  center=(36,9)  bbox=(36,9,36,9)  size=1
+  - obj_020  color=maroon     shape=1x1  center=(36,11)  bbox=(36,11,36,11)  size=1
+  - obj_021  color=maroon     shape=1x1  center=(37,8)  bbox=(37,8,37,8)  size=1
+  - obj_022  color=maroon     shape=1x1  center=(37,10)  bbox=(37,10,37,10)  size=1
+  - obj_023  color=tan        shape=2x2  center=(20,24)  bbox=(20,24,21,25)  size=4
+  - obj_024  color=lime       shape=4x4  center=(32,20)  bbox=(30,18,33,21)  size=16
+  - obj_025  color=rose       shape=2x2  center=(40,10)  bbox=(40,10,41,11)  size=4
+```
+
+### Module 0 output — object relations
+
+```
+[OBJECT RELATIONS]
+  same-color groups (color: object ids):
+    red: #0, #1, #2
+    green: #3, #4
+    yellow: #5, #6, #7, #8, #9
+    light blue: #11, #12
+    maroon: #13, #14, #15, #16, #17, #18, #19, #20, #21, #22
+  same-shape groups (shape: object ids):
+    6x6_size32: #0, #2
+    4x4_size16: #1, #13, #24
+    1x1_size1: #6, #7, #8, #9, #14, #15, #17, #18, #19, #20, #21, #22
+    5x13_size47: #11, #16
+    2x2_size4: #23, #25
+  closest object pairs (by center distance):
+    #0 <-> #23: 0.0 cells
+    #2 <-> #25: 0.0 cells
+    #5 <-> #12: 0.9 cells
+    #6 <-> #14: 1.0 cells
+    #6 <-> #15: 1.0 cells
+```
+
+### Module 1 prior — Knowledge state going INTO this hypothesis call
+
+```
+  rounds_played: 0, rounds_won: 0
+  goal_hypothesis: ''
+  goal_confidence: low
+  action_semantics: (empty)
+  rejected_goals: (empty)
+```
+
+### Proposed ground truth (override below if you disagree)
 
 > match / align the maroon objects with their same-color targets (heuristic best-guess — verify by play)
 
@@ -236,8 +698,7 @@ your_corrected_ground_truth:
 your_corrected_ground_truth: 
 ```
 
-
-### K=5 hypotheses
+### K=5 hypotheses produced by Reflection Agent
 
 | k | hypothesis | label (YES/PARTIAL/NO/UNSURE) |
 |---:|---|---|
@@ -247,13 +708,79 @@ your_corrected_ground_truth:
 | 3 | align the yellow objects at the bottom edge | **____** |
 | 4 | align the 4x4_size16 block to the center of the grid to help align the same-color groups | **____** |
 
+
 ---
 
 ## dc22 — frame B_with_prior (step 30)
 
 ![dc22 B_with_prior](./frame_B_dc22_step30.png)
 
-**Proposed ground truth (you can override below)**:
+### Module 0 output — objects extracted by scipy
+
+```
+  - obj_000  color=red        shape=6x6  center=(20,24)  bbox=(18,22,23,27)  size=32
+  - obj_001  color=red        shape=4x4  center=(32,10)  bbox=(30,8,33,11)  size=16
+  - obj_002  color=red        shape=6x6  center=(41,11)  bbox=(38,8,43,13)  size=32
+  - obj_003  color=green      shape=10x64  center=(4,32)  bbox=(0,0,9,63)  size=640
+  - obj_004  color=green      shape=10x64  center=(58,31)  bbox=(54,0,63,63)  size=591
+  - obj_005  color=yellow     shape=44x32  center=(32,15)  bbox=(10,0,53,31)  size=1252
+  - obj_006  color=yellow     shape=1x1  center=(34,10)  bbox=(34,10,34,10)  size=1
+  - obj_007  color=yellow     shape=1x1  center=(35,9)  bbox=(35,9,35,9)  size=1
+  - obj_008  color=yellow     shape=1x1  center=(36,10)  bbox=(36,10,36,10)  size=1
+  - obj_009  color=yellow     shape=1x1  center=(37,9)  bbox=(37,9,37,9)  size=1
+  - obj_010  color=gray       shape=44x32  center=(32,48)  bbox=(10,32,53,63)  size=1190
+  - obj_011  color=light blue shape=5x13  center=(19,48)  bbox=(17,42,21,54)  size=47
+  - obj_012  color=light blue shape=4x6  center=(32,14)  bbox=(30,12,33,17)  size=24
+  - obj_013  color=maroon     shape=4x4  center=(22,20)  bbox=(20,18,23,21)  size=16
+  - obj_014  color=maroon     shape=1x1  center=(34,9)  bbox=(34,9,34,9)  size=1
+  - obj_015  color=maroon     shape=1x1  center=(34,11)  bbox=(34,11,34,11)  size=1
+  - obj_016  color=maroon     shape=5x13  center=(36,48)  bbox=(34,42,38,54)  size=47
+  - obj_017  color=maroon     shape=1x1  center=(35,8)  bbox=(35,8,35,8)  size=1
+  - obj_018  color=maroon     shape=1x1  center=(35,10)  bbox=(35,10,35,10)  size=1
+  - obj_019  color=maroon     shape=1x1  center=(36,9)  bbox=(36,9,36,9)  size=1
+  - obj_020  color=maroon     shape=1x1  center=(36,11)  bbox=(36,11,36,11)  size=1
+  - obj_021  color=maroon     shape=1x1  center=(37,8)  bbox=(37,8,37,8)  size=1
+  - obj_022  color=maroon     shape=1x1  center=(37,10)  bbox=(37,10,37,10)  size=1
+  - obj_023  color=tan        shape=2x2  center=(20,24)  bbox=(20,24,21,25)  size=4
+  - obj_024  color=lime       shape=4x4  center=(32,20)  bbox=(30,18,33,21)  size=16
+  - obj_025  color=rose       shape=2x2  center=(38,8)  bbox=(38,8,39,9)  size=4
+```
+
+### Module 0 output — object relations
+
+```
+[OBJECT RELATIONS]
+  same-color groups (color: object ids):
+    red: #0, #1, #2
+    green: #3, #4
+    yellow: #5, #6, #7, #8, #9
+    light blue: #11, #12
+    maroon: #13, #14, #15, #16, #17, #18, #19, #20, #21, #22
+  same-shape groups (shape: object ids):
+    6x6_size32: #0, #2
+    4x4_size16: #1, #13, #24
+    1x1_size1: #6, #7, #8, #9, #14, #15, #17, #18, #19, #20, #21, #22
+    5x13_size47: #11, #16
+    2x2_size4: #23, #25
+  closest object pairs (by center distance):
+    #0 <-> #23: 0.0 cells
+    #5 <-> #12: 0.9 cells
+    #6 <-> #14: 1.0 cells
+    #6 <-> #15: 1.0 cells
+    #6 <-> #18: 1.0 cells
+```
+
+### Module 1 prior — Knowledge state going INTO this hypothesis call
+
+```
+  rounds_played: 0, rounds_won: 0
+  goal_hypothesis: 'align the two red squares vertically in the left column'
+  goal_confidence: low
+  action_semantics: (empty)
+  rejected_goals: (empty)
+```
+
+### Proposed ground truth (override below if you disagree)
 
 > match / align the maroon objects with their same-color targets (heuristic best-guess — verify by play)
 
@@ -261,8 +788,7 @@ your_corrected_ground_truth:
 your_corrected_ground_truth: 
 ```
 
-
-### K=5 hypotheses
+### K=5 hypotheses produced by Reflection Agent
 
 | k | hypothesis | label (YES/PARTIAL/NO/UNSURE) |
 |---:|---|---|
